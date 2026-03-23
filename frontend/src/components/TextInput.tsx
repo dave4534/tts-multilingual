@@ -12,6 +12,10 @@ interface TextInputProps {
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
+  /** Text direction (e.g. `rtl` for Hebrew placeholder and typing). */
+  dir?: "ltr" | "rtl";
+  /** BCP-47-ish code for the expected input language (a11y). */
+  lang?: string;
   disabled?: boolean;
   className?: string;
   hasDragDropBelow?: boolean;
@@ -21,7 +25,9 @@ interface TextInputProps {
 export function TextInput({
   value,
   onChange,
-  placeholder = "Paste your text here...",
+  placeholder = "Type or paste your text here",
+  dir = "ltr",
+  lang,
   disabled,
   className,
   hasDragDropBelow = true,
@@ -123,11 +129,14 @@ export function TextInput({
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         disabled={disabled}
+        dir={dir}
+        lang={lang}
         style={{ backgroundColor: "transparent" }}
         className={cn(
           "text-foreground dark:text-neutral-300",
           "w-full resize-none border-0 px-0 py-3 text-base transition-colors app-placeholder outline-none",
           "placeholder:opacity-70",
+          dir === "rtl" && "text-right",
           "disabled:cursor-not-allowed disabled:opacity-60",
           hasDragDropBelow ? "absolute inset-0 h-full min-h-0 overflow-y-auto" : "min-h-0 flex-1",
           "scrollbar-none",

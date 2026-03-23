@@ -12,7 +12,7 @@ import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import modal
 
@@ -46,6 +46,29 @@ SUPPORTED_MTL_LANGUAGE_IDS: frozenset[str] = frozenset({
     "zh",
 })
 DEFAULT_LANGUAGE_ID = "en"
+
+# Bundled in GPU image; Chatterbox's tokenizer calls `Dicta()` without args (broken against
+# current dicta-onnx), so we vocalize Hebrew here before `ChatterboxMultilingualTTS.generate`.
+DICTA_ONNX_PATH = "/dicta/dicta-1.0.int8.onnx"
+DICTA_MAX_CHARS = 2048  # dicta-onnx documented limit per `add_diacritics` input
+
+
+def _voice_language_ids(voice: dict) -> list[str]:
+    """
+    BCP-47-ish codes this voice may be used with (must match job language_id).
+    Missing or invalid manifest data defaults to English only.
+    """
+    raw = voice.get("language_ids")
+    if not raw:
+        return [DEFAULT_LANGUAGE_ID]
+    if not isinstance(raw, list):
+        return [DEFAULT_LANGUAGE_ID]
+    out: list[str] = []
+    for x in raw:
+        s = str(x).strip().lower()
+        if s:
+            out.append(s)
+    return out if out else [DEFAULT_LANGUAGE_ID]
 
 
 def normalize_language_id(language_id: str) -> str:
@@ -227,7 +250,16 @@ image = (
         f"rm /tmp/voices.zip"
     )
     .run_commands(
-        "pip install numpy && pip install --no-build-isolation chatterbox-tts==0.1.6 pydub torch torchaudio"
+        "mkdir -p /dicta && "
+        "wget -q https://github.com/thewh1teagle/dicta-onnx/releases/download/"
+        "model-files-v1.0/dicta-1.0.int8.onnx -O /dicta/dicta-1.0.int8.onnx"
+    )
+    .run_commands(
+        # dicta-onnx wants tokenizers>=0.21; chatterbox pins transformers→tokenizers<0.21.
+        # Install dicta-onnx without deps; Chatterbox's tokenizers works with Dicta's HF tokenizer.
+        "pip install numpy && pip install --no-build-isolation "
+        "chatterbox-tts==0.1.6 pydub torch torchaudio onnxruntime==1.21.1 && "
+        "pip install --no-deps dicta-onnx==1.0.9"
     )
     .add_local_dir("voices", VOICES_CUSTOM_PATH)
 )
@@ -467,6 +499,7 @@ def web() -> "FastAPI":
                     "id": v["id"],
                     "name": v["name"],
                     "description": v["description"],
+                    "language_ids": _voice_language_ids(v),
                     "preview_url": f"/voices/preview/{v['id']}" if preview_path.exists() else None,
                     "enabled": True,
                 })
@@ -478,6 +511,7 @@ def web() -> "FastAPI":
                     "id": v["id"],
                     "name": v["name"],
                     "description": v["description"],
+                    "language_ids": _voice_language_ids(v),
                     "preview_url": f"/voices/preview/{v['id']}" if preview_path.exists() else None,
                     "enabled": voice_path.exists(),
                 })
@@ -490,14 +524,18 @@ def web() -> "FastAPI":
     @api.get("/voices/preview/{voice_id}")
     def voice_preview(voice_id: str):
         if voice_id == "lucy":
-            path = Path("/voices/lucy-preview.mp3")
+            path = Path("/voices/en/lucy-preview.mp3")
             if not path.exists():
                 raise HTTPException(404, "Lucy preview not available")
             media_type = "audio/mpeg" if path.suffix.lower() == ".mp3" else "audio/wav"
             return FileResponse(
                 path,
                 media_type=media_type,
-                headers={"Cache-Control": "no-store"},
+                headers={
+                    "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+                    "Pragma": "no-cache",
+                    "Expires": "0",
+                },
             )
         voices = _load_voices()
         voice = next((v for v in voices if v["id"] == voice_id), None)
@@ -511,7 +549,11 @@ def web() -> "FastAPI":
         return FileResponse(
             path,
             media_type=media_type,
-            headers={"Cache-Control": "no-store"},
+            headers={
+                "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+                "Pragma": "no-cache",
+                "Expires": "0",
+            },
         )
 
     class ConvertRequest(BaseModel):
@@ -526,10 +568,20 @@ def web() -> "FastAPI":
         data = json.loads(Path("/voices/voices.json").read_text())
         return data["voices"]
 
-    def _validate_voice_id(voice_id: str) -> None:
+    def _validate_voice_for_language(voice_id: str, language_id: str) -> None:
         voices = _load_voices()
-        if not any(v["id"] == voice_id for v in voices):
+        voice = next((v for v in voices if v["id"] == voice_id), None)
+        if not voice:
             raise HTTPException(400, f"Unknown voice_id: {voice_id}")
+        lid = language_id.strip().lower()
+        allowed = _voice_language_ids(voice)
+        if lid not in allowed:
+            langs = ", ".join(sorted(allowed))
+            raise HTTPException(
+                400,
+                f"Voice '{voice_id}' is not available for language '{lid}'. "
+                f"This voice supports: {langs}.",
+            )
 
     def _extract_text_from_file(file: UploadFile) -> str:
         file.file.seek(0)
@@ -574,7 +626,7 @@ def web() -> "FastAPI":
                 400,
                 f"Text exceeds {MAX_WORDS:,} word limit. You have {word_count:,} words.",
             )
-        _validate_voice_id(voice_id)
+        _validate_voice_for_language(voice_id, lid)
 
         # For shorter texts, keep existing single-job behavior.
         if word_count <= SECTION_MAX_WORDS:
@@ -772,6 +824,55 @@ class ChatterboxTTS:
         from chatterbox.mtl_tts import ChatterboxMultilingualTTS
 
         self.model = ChatterboxMultilingualTTS.from_pretrained(device="cuda")
+        self._hebrew_dicta_client = None
+
+    def _hebrew_dicta_add(self, segment: str) -> str:
+        """Vocalize text; dicta-onnx allows up to DICTA_MAX_CHARS per call."""
+        from dicta_onnx import Dicta
+
+        if self._hebrew_dicta_client is None:
+            self._hebrew_dicta_client = Dicta(DICTA_ONNX_PATH)
+        if len(segment) <= DICTA_MAX_CHARS:
+            return self._hebrew_dicta_client.add_diacritics(segment)
+        pieces: list[str] = []
+        for i in range(0, len(segment), DICTA_MAX_CHARS):
+            pieces.append(
+                self._hebrew_dicta_client.add_diacritics(segment[i : i + DICTA_MAX_CHARS])
+            )
+        return "".join(pieces)
+
+    def _diacritize_hebrew_mtl(self, text: str) -> str:
+        """
+        Add niqqud for Hebrew so tokenization matches Chatterbox multilingual training.
+
+        Skips non-Hebrew text (e.g. English pasted with language he → unchanged; quality
+        will still be poor — users should paste עברית).
+        """
+        if not text.strip():
+            return text
+        if not any("\u0590" <= c <= "\u05FF" for c in text):
+            return text
+        try:
+            if len(text) <= DICTA_MAX_CHARS:
+                return self._hebrew_dicta_add(text)
+            parts: list[str] = []
+            buf: list[str] = []
+            buf_len = 0
+            for word in text.split():
+                extra = len(word) + (1 if buf else 0)
+                if buf_len + extra > DICTA_MAX_CHARS and buf:
+                    parts.append(self._hebrew_dicta_add(" ".join(buf)))
+                    buf = [word]
+                    buf_len = len(word)
+                else:
+                    buf_len += extra
+                    buf.append(word)
+            if buf:
+                parts.append(self._hebrew_dicta_add(" ".join(buf)))
+            return " ".join(parts)
+        except Exception as e:  # noqa: BLE001
+            print(f"[TTS] Hebrew diacritization failed, using raw text: {e!r}", flush=True)
+            return text
 
     @modal.method()
     def generate(
@@ -798,6 +899,8 @@ class ChatterboxTTS:
             WAV audio as bytes.
         """
         lid = language_id.strip().lower()
+        if lid == "he":
+            text = self._diacritize_hebrew_mtl(text)
         wav = self.model.generate(
             text,
             lid,
@@ -867,6 +970,19 @@ class ChatterboxTTS:
         return buffer.read()
 
     @modal.method()
+    def trim_mp3_to_max_ms(self, mp3_bytes: bytes, max_ms: int) -> bytes:
+        """Hard-cap MP3 duration (drops garbled or repeated tail on some previews)."""
+        if max_ms <= 0 or not mp3_bytes:
+            return mp3_bytes
+        seg = AudioSegment.from_mp3(io.BytesIO(mp3_bytes))
+        if len(seg) <= max_ms:
+            return mp3_bytes
+        trimmed = seg[:max_ms]
+        buf = io.BytesIO()
+        trimmed.export(buf, format="mp3")
+        return buf.getvalue()
+
+    @modal.method()
     def generate_and_stitch(
         self,
         chunks: list[str],
@@ -925,8 +1041,9 @@ class ChatterboxTTS:
         segments: list[bytes] = []
         for i, chunk in enumerate(chunks):
             print(f"[TTS] chunk {i+1}/{n} start: {chunk[:60]!r}", flush=True)
+            chunk_text = self._diacritize_hebrew_mtl(chunk) if lid == "he" else chunk
             wav = self.model.generate(
-                chunk,
+                chunk_text,
                 lid,
                 cfg_weight=cfg_weight,
                 exaggeration=exaggeration,
@@ -967,11 +1084,12 @@ class ChatterboxTTS:
         # Prepare conditionals once; cfg_weight is applied during generate.
         self.model.prepare_conditionals(voice_path, exaggeration=exaggeration)
         results: dict[str, bytes] = {}
+        sweep_text = self._diacritize_hebrew_mtl(text) if lid == "he" else text
 
         for cfg_weight in cfg_weights:
             print(f"[cfg_sweep] cfg_weight={cfg_weight}", flush=True)
             wav = self.model.generate(
-                text,
+                sweep_text,
                 lid,
                 cfg_weight=cfg_weight,
                 exaggeration=exaggeration,
@@ -1047,6 +1165,66 @@ def test_pipeline(
 
 
 PREVIEW_SENTENCE = "This is a short preview of this voice."
+
+
+def _preview_text_for_voice(voice: dict) -> str:
+    """Manifest `preview_text` overrides the default English preview sentence."""
+    custom = voice.get("preview_text")
+    if isinstance(custom, str) and custom.strip():
+        return custom.strip()
+    return PREVIEW_SENTENCE
+
+
+def _preview_language_id_for_voice(voice: dict) -> str:
+    """
+    Language for synthetic preview TTS. Uses `preview_language_id` when set;
+    otherwise a single `language_ids` entry; otherwise default English.
+    """
+    explicit = voice.get("preview_language_id")
+    if isinstance(explicit, str) and explicit.strip():
+        return normalize_language_id(explicit.strip())
+    lids = _voice_language_ids(voice)
+    if len(lids) == 1:
+        return normalize_language_id(lids[0])
+    return DEFAULT_LANGUAGE_ID
+
+
+def _preview_max_duration_ms(voice: dict) -> Optional[int]:
+    """Optional hard cap on synthetic preview length (manifest `preview_max_duration_ms`)."""
+    raw = voice.get("preview_max_duration_ms")
+    if raw is None:
+        return None
+    try:
+        n = int(raw)
+    except (TypeError, ValueError):
+        return None
+    return n if n > 0 else None
+
+
+def _preview_conditioning_for_voice(voice: dict) -> tuple[float, float, float]:
+    """
+    (cfg_weight, exaggeration, temperature) for synthetic preview generation.
+    Manifest may set preview_cfg_weight, preview_exaggeration, preview_temperature
+    (same semantics as /convert). Clamped to [0, 2].
+    """
+    defaults = (0.5, 0.5, 0.8)
+
+    def pick(key: str, default: float) -> float:
+        raw = voice.get(key)
+        if raw is None:
+            return default
+        try:
+            v = float(raw)
+        except (TypeError, ValueError):
+            return default
+        return max(0.0, min(2.0, v))
+
+    return (
+        pick("preview_cfg_weight", defaults[0]),
+        pick("preview_exaggeration", defaults[1]),
+        pick("preview_temperature", defaults[2]),
+    )
+
 
 @app.local_entrypoint()
 def generate_cfg_weight_sweep_for_voice(
@@ -1162,11 +1340,27 @@ def generate_voice_previews() -> None:
         if not vid or not filename:
             continue
         preview_filename = v.get("preview_filename") or f"{vid}-preview.mp3"
+        preview_text = _preview_text_for_voice(v)
+        preview_lid = _preview_language_id_for_voice(v)
+        cfg_w, exag, temp = _preview_conditioning_for_voice(v)
         # Path inside the GPU container where the reference clip is mounted.
         reference_path_in_container = f"{VOICES_CUSTOM_PATH}/{filename}"
         try:
-            print(f"[preview] Generating preview for {vid!r} using {filename!r}...")
-            mp3_bytes = tts.generate_and_stitch.remote([PREVIEW_SENTENCE], reference_path_in_container)
+            print(
+                f"[preview] Generating preview for {vid!r} using {filename!r} "
+                f"(language_id={preview_lid!r}, cfg={cfg_w}, exag={exag}, temp={temp})..."
+            )
+            mp3_bytes = tts.generate_and_stitch.remote(
+                [preview_text],
+                reference_path_in_container,
+                language_id=preview_lid,
+                cfg_weight=cfg_w,
+                exaggeration=exag,
+                temperature=temp,
+            )
+            cap_ms = _preview_max_duration_ms(v)
+            if cap_ms is not None:
+                mp3_bytes = tts.trim_mp3_to_max_ms.remote(mp3_bytes, cap_ms)
         except Exception as e:  # noqa: BLE001
             print(f"[preview] Failed for {vid!r}: {e!r}")
             continue
@@ -1192,10 +1386,24 @@ def generate_voice_preview_for(voice_id: str = "aba") -> None:
 
     tts = ChatterboxTTS()
     reference_path_in_container, preview_filename = resolve_voice_preview_inputs(voice)
+    preview_text = _preview_text_for_voice(voice)
+    preview_lid = _preview_language_id_for_voice(voice)
+    cfg_w, exag, temp = _preview_conditioning_for_voice(voice)
     print(
-        f"[preview] Generating preview for {voice_id!r} using reference {reference_path_in_container!r}..."
+        f"[preview] Generating preview for {voice_id!r} using reference {reference_path_in_container!r} "
+        f"(language_id={preview_lid!r}, cfg={cfg_w}, exag={exag}, temp={temp})..."
     )
-    mp3_bytes = tts.generate_and_stitch.remote([PREVIEW_SENTENCE], reference_path_in_container)
+    mp3_bytes = tts.generate_and_stitch.remote(
+        [preview_text],
+        reference_path_in_container,
+        language_id=preview_lid,
+        cfg_weight=cfg_w,
+        exaggeration=exag,
+        temperature=temp,
+    )
+    cap_ms = _preview_max_duration_ms(voice)
+    if cap_ms is not None:
+        mp3_bytes = tts.trim_mp3_to_max_ms.remote(mp3_bytes, cap_ms)
     out_path = Path("voices") / preview_filename
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_bytes(mp3_bytes)
@@ -1212,10 +1420,10 @@ def generate_lucy_preview() -> None:
     except Exception as e:  # noqa: BLE001
         print(f"[preview] Failed for 'lucy': {e!r}")
         return
-    out_path = Path("voices") / "lucy-preview.mp3"
+    out_path = Path("voices") / "en" / "lucy-preview.mp3"
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_bytes(mp3_bytes)
-    print(f"[preview] Saved lucy-preview.mp3 ({len(mp3_bytes)} bytes)")
+    print(f"[preview] Saved en/lucy-preview.mp3 ({len(mp3_bytes)} bytes)")
 
 @app.local_entrypoint()
 def test_progress(

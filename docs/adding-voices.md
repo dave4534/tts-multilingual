@@ -8,14 +8,22 @@ Use this checklist whenever you add a new selectable voice.
    - Source audio from an open-licensed dataset (e.g. LibriVox, Common Voice) or a curated internal file.
    - Trim a **6–10 second** segment with consistent tone and minimal background noise.
    - Convert to **WAV** (e.g. 16 kHz or 22.05 kHz), normalize volume to roughly match existing clips.
-   - Save under `voices/` with a descriptive filename, e.g. `calm-older-man.wav` or `Ram-Dass.wav`.
+   - Save under the right **language folder** under `voices/`:
+     - English (and other `en` personas): **`voices/en/`** (e.g. `voices/en/my-narrator.wav`).
+     - Hebrew: **`voices/he/`** (e.g. `voices/he/my-narrator.wav`).
 
 2. **Register in `voices/voices.json`**
    - Add an entry with:
      - `id`: machine id (e.g. `"calm-older-man"` or `"ram-dass"`),
      - `name`: display name,
      - `description`: short UX copy,
-     - `filename`: exact WAV filename.
+     - `filename`: path **relative to `voices/`**, including the subfolder (e.g. `"en/my-narrator.wav"` or `"he/my-narrator.wav"`). Omit for `"builtin": true` personas like Lucy.
+     - **`language_ids`**: list of Chatterbox output languages this reference clip is allowed for (e.g. `["en"]`, `["he"]`, or `["en", "he"]`). Omitted → treated as **English only** (`["en"]`). The app **hides** the persona when the user’s selected output language is not in this list; `/convert` returns **400** if `language_id` does not match.
+     - **`preview_filename`** (optional): same idea — e.g. `"en/my-narrator-preview.mp3"` (typically co-located with the reference language folder).
+     - **`preview_text`** (optional): override the default English synthetic preview sentence (e.g. Hebrew UI copy for a Hebrew-only voice). Requires running `modal run modal_app/main.py::generate_voice_preview_for --voice-id <id>` (or `generate_voice_previews`) to bake the MP3.
+     - **`preview_language_id`** (optional): Chatterbox language code used when generating that synthetic preview. If omitted, a single entry in `language_ids` is used; otherwise previews default to English.
+     - **`preview_cfg_weight`**, **`preview_exaggeration`**, **`preview_temperature`** (optional): conditioning for synthetic preview only (same ranges as `/convert`). Use when a reference clip causes garbled or repeated tail audio in the default preview.
+     - **`preview_max_duration_ms`** (optional): hard cap on synthetic preview MP3 length after generation (trim). Use if the model adds a junk tail after an otherwise correct sentence (same `preview_text` as other voices).
    - Keep ids stable; frontend and backend both use `id` as the `voice_id`.
 
 3. **Deploy and mount**

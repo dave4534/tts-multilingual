@@ -22,14 +22,14 @@ export function useConvert() {
   }, []);
 
   const startConvert = useCallback(
-    async (textOrFile: string | File, voiceId: string) => {
+    async (textOrFile: string | File, voiceId: string, languageId: string) => {
       stopPolling();
       setState({ status: "submitting" });
       try {
         const { job_id } =
           typeof textOrFile === "string"
-            ? await convert(textOrFile, voiceId)
-            : await convertWithFile(textOrFile, voiceId);
+            ? await convert(textOrFile, voiceId, languageId)
+            : await convertWithFile(textOrFile, voiceId, languageId);
         setState({ status: "polling", jobId: job_id, progress: 0, state: "queued" });
 
         const poll = () => {

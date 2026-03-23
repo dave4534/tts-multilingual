@@ -56,8 +56,8 @@ export function VoiceSheet({
         )}
         style={{ zIndex: "var(--z-modal)" }}
       >
-        <div className="flex shrink-0 items-center justify-between border-b border-border px-4 py-3">
-          <h2 id="voice-sheet-title" className="text-base font-semibold text-foreground">
+        <div className="flex shrink-0 items-center justify-between px-4 py-3">
+          <h2 id="voice-sheet-title" className="m-0 font-sans text-base font-semibold text-foreground">
             Choose a voice
           </h2>
           <button
@@ -75,6 +75,7 @@ export function VoiceSheet({
             onSelect={onSelect}
             loading={loading}
             disabled={disabled}
+            emptyLabel="No voices are available for this language yet."
             className="gap-3"
           />
         </div>

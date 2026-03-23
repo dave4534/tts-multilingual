@@ -7,6 +7,20 @@ Format: `[Task ID] One-line summary`
 
 ## Recent
 
+- [voice] **Gentle young man** (`aba`): uses default English preview sentence like other personas; manifest **`preview_cfg_weight` / `preview_exaggeration` / `preview_temperature`** + **`preview_max_duration_ms`** + GPU **`trim_mp3_to_max_ms`** so Chatterbox tail junk (e.g. repeated “this the voice”) is dropped; regenerated **`en/aba-preview.mp3`**
+- [UI] Voice preview URLs append per-load cache-bust query + `encodeURIComponent` for ids; API preview `FileResponse` sends stronger no-cache headers (avoids stale `<audio>` after new `voices/` deploy)
+- [voice] **`dave-he`** synthetic preview: `he/dave-hebrew-preview.mp3` speaks manifest `preview_text` (“השמעה לדוגמה של הקול הזה”) with `language_id: he`; `voices.json` supports optional **`preview_text`** / **`preview_language_id`**; `generate_voice_previews` / `generate_voice_preview_for` use them
+- [UI] Clear confirmation: native `<dialog>` (“Clear text? Your changes will be lost.” / Clear text / Keep editing); site title and Clear both open it when there is something to clear (same enable rules as before)
+- [UI] Language menu: radio row highlight `data-[highlighted]:bg-black` + white text/icons; controlled `open` closes on selection; options limited to `languageIdsWithUsableVoices(voices)` (manifest personas with usable reference / API enabled); `languageId` clamped when list changes
+- [UI] Language dropdown trigger matches `SelectedVoicePill` chrome (`VOICE_PILL_CHROME_CLASS`: `rounded-full`, `border-border`, `bg-card`, `px-3 py-1.5`); label `text-sm font-medium` like voice name
+- [UI] Text area placeholder + `dir`/`lang` from output language: English (and non-Hebrew) → “Type or paste your text here”; Hebrew → RTL `הקלד או הדבק את הטקסט כאן`
+- [UI] Footer `BOTTOM_BAR_HEIGHT_PX` 108; voice sidebar “Choose a voice” / list layout (sans title, full-height scroll, no header rule); mobile sheet matches; dropdown panels opaque (`bg-neutral-50` / `dark:bg-sidebar`, border, `shadow-xl`, zoom-only animation—no fade) so language menu does not show textarea through it
+- [TTS] **Hebrew vocalization** before synthesis: bundle Dicta int8 ONNX + `dicta-onnx==1.0.9` (installed `--no-deps` to avoid tokenizers conflict with Chatterbox); GPU worker adds niqqud for `language_id: he` because upstream `Dicta()` call in chatterbox is invalid
+- [voice] Hebrew persona **`dave-he`** (`Dave`): `he/Dave-hebrew.wav`, `language_ids: ["he"]` — shows in UI when output language is Hebrew
+- [voice] **`voices/en/`** and **`voices/he/`** layout: English assets and previews under `en/`; Hebrew drops under `he/`; manifest uses paths like `en/Dave.wav` / `he/…`; Lucy preview served from `en/lucy-preview.mp3`
+- [voice] Per-persona **`language_ids`** in `voices/voices.json` (all current personas `["en"]`); `GET /voices` includes `language_ids`; `/convert` rejects voice+language mismatches; frontend filters the voice list by selected output language (non-English → no personas until you add one with that code)
+- [UI] Fix language dropdown crash: wrap label + radio list in `DropdownMenuGroup` (Base UI requires `Menu.Group` for `MenuGroupLabel` / menu structure)
+- [UI] **Output language** selector next to selected voice: shadcn/Base UI `DropdownMenu` with radio items for all 23 Chatterbox Multilingual codes; choice is sent as `language_id` on `/convert` (e.g. Hebrew `he` for Hebrew text)
 - [TTS] Switched GPU synthesis to **Chatterbox Multilingual** (`chatterbox.mtl_tts.ChatterboxMultilingualTTS`, `chatterbox-tts==0.1.6`); `/convert` accepts optional `language_id` (default `en`); validate against 23 supported codes; HF weights load on first GPU start (not baked at CPU image build — multilingual ckpt incompatible with CPU torch.load)
 - [UI] Minor UI adjustments: light mode white backgrounds (left-pane, voice cards, semantic tokens); dark mode neutral-950 for left-pane and voice cards; scroll thumb neutral-300/700; avatar circles fixed 300-shade palette; header/footer/sidebar neutral-50 light; drag-drop neutral-50/900
 - [voice] Added Vered persona (Vered.wav), removed Upbeat young woman

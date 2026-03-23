@@ -1,36 +1,42 @@
 # Voice Reference Clips
 
-Store 6–10 second reference audio clips here for each voice persona.
+Audio assets live under **language subfolders** (paths match `voices.json`):
+
+| Folder | Purpose |
+|--------|---------|
+| **`en/`** | English reference WAVs and preview MP3s |
+| **`he/`** | Hebrew reference WAVs (and previews when added) |
+
+Manifest entries use paths **relative to this directory**, e.g. `"filename": "en/Dave.wav"`, `"preview_filename": "en/dave-preview.mp3"`.
+
+---
 
 **Extract clips from source audio:**
 ```bash
 pip install pydub   # and ffmpeg on PATH
-python voices/extract_clip.py input.mp3 output.wav --start 30 --duration 8
+python voices/extract_clip.py input.mp3 voices/en/output.wav --start 30 --duration 8
 ```
 
 **Normalize volume across clips (Task 2.3):**
 ```bash
-python voices/normalize_clips.py clip1.wav clip2.wav --target -3
-python voices/normalize_clips.py voices/*.wav --out-dir voices/normalized
+python voices/normalize_clips.py voices/en/clip1.wav voices/en/clip2.wav --target -3
+python voices/normalize_clips.py voices/en/*.wav --out-dir voices/en/normalized
 ```
 
-**MVP lineup and filenames (Task 2.4):**
+**MVP lineup (English)** — files under `en/`:
 
-| Persona | Filename |
-|---------|----------|
-| Calm older man | `calm-older-man.wav` |
-| Upbeat young woman | `upbeat-young-woman.wav` |
+| Persona | Filename (under `en/`) |
+|---------|-------------------------|
 | Professional man | `professional-man.wav` |
 | Professional woman | `professional-woman.wav` |
-| Gentle young man | `gentle-young-man.wav` |
-| Warm older woman | `warm-older-woman.wav` |
+| … | See `voices.json` |
 
-Store normalized WAV files in this directory. See `voices.json` for the manifest (Task 2.5).
+**Hebrew:** add WAVs under `he/` and register in `voices.json` with `"filename": "he/yourfile.wav"` and `"language_ids": ["he"]`. See `he/README.md`.
 
 **Test each voice with Modal (Task 2.6):**
 ```bash
 modal run modal_app/main.py::test_voice                    # test Lucy (sample)
-modal run modal_app/main.py::test_voice --voice-id calm-older-man   # test custom clip
+modal run modal_app/main.py::test_voice --voice-id dave   # test custom clip
 ```
 
 **Format:** WAV, normalized volume (use `normalize_clips.py`).

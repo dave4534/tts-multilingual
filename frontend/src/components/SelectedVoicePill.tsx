@@ -1,5 +1,9 @@
 import { cn } from "@/lib/utils";
 
+/** Shared shell for selected-voice display and language trigger (border, radius, fill, padding). */
+export const VOICE_PILL_CHROME_CLASS =
+  "inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1.5 text-foreground";
+
 /* Voice persona circle colors – constant 300-shade palette (theme-independent) */
 const AVATAR_COLORS = [
   "bg-blue-300",
@@ -30,7 +34,7 @@ export function SelectedVoicePill({
   const color = AVATAR_COLORS[index % AVATAR_COLORS.length];
   return (
     <div
-      className={cn("inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1.5 text-foreground", className)}
+      className={cn(VOICE_PILL_CHROME_CLASS, className)}
       role="status"
       aria-label={`Selected voice: ${name}`}
     >

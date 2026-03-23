@@ -16,7 +16,7 @@ For dev rules, architecture, and MVP boundaries, read `.cursor/cursorrules`.
 
 ```bash
 # Frontend
-cd frontend && npm install && npm run dev    # local dev server
+cd frontend && npm install && npm run dev    # local dev server (URL in terminal; default http://localhost:5190 — see frontend/vite.config.ts)
 cd frontend && npm run build                 # production build
 
 # Modal (backend + GPU) — always run from project root, not inside modal_app/

@@ -5,7 +5,7 @@
  * State 2 (text loaded): 25px header→voice, 25px voice→text, 25px text→footer, 25px left margin, 100px right gap to sidebar.
  */
 export const SPACER_PX = 25;
-export const BOTTOM_BAR_HEIGHT_PX = 80;
+export const BOTTOM_BAR_HEIGHT_PX = 108;
 export const UPLOAD_ZONE_GAP_PX = SPACER_PX;
 export const UPLOAD_ZONE_HEIGHT_PX = 270;
 export const TEXT_TO_UPLOAD_GAP_PX = SPACER_PX;

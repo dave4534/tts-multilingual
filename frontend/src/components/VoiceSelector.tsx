@@ -10,6 +10,8 @@ interface VoiceSelectorProps {
   onSelect: (id: string) => void;
   loading?: boolean;
   disabled?: boolean;
+  /** Shown when not loading and `voices` is empty (e.g. no personas for selected language). */
+  emptyLabel?: string;
   className?: string;
 }
 
@@ -19,6 +21,7 @@ export function VoiceSelector({
   onSelect,
   loading,
   disabled,
+  emptyLabel = "No voices are available for this language yet.",
   className,
 }: VoiceSelectorProps) {
   if (loading) {
@@ -26,6 +29,17 @@ export function VoiceSelector({
       <div className={cn("text-sm text-muted-foreground", className)}>
         Loading voices...
       </div>
+    );
+  }
+
+  if (voices.length === 0) {
+    return (
+      <p
+        className={cn("text-sm text-muted-foreground", className)}
+        role="status"
+      >
+        {emptyLabel}
+      </p>
     );
   }
 

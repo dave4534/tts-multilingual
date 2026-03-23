@@ -4,10 +4,15 @@
 
 const API_BASE = import.meta.env.VITE_TTS_API_URL ?? "https://dave4534--tts-multilingual-api.modal.run";
 
+/** Bust browser disk cache for `<audio src>` (same path otherwise often replays an old clip). */
+const PREVIEW_URL_BUST = Date.now();
+
 export interface Voice {
   id: string;
   name: string;
   description: string;
+  /** Chatterbox language codes this reference clip may be used with (e.g. `en`, `he`). */
+  language_ids?: string[];
   preview_url: string | null;
   enabled?: boolean;
 }
@@ -91,7 +96,8 @@ export function getDownloadUrl(jobId: string): string {
 }
 
 export function getPreviewUrl(voiceId: string): string {
-  return `${API_BASE}/voices/preview/${voiceId}`;
+  const id = encodeURIComponent(voiceId);
+  return `${API_BASE}/voices/preview/${id}?_=${PREVIEW_URL_BUST}`;
 }
 
 export async function extractTextFromFile(file: File): Promise<{ text: string }> {

@@ -70,4 +70,10 @@
 
 ## Adding a New TTS Persona
 
-See `docs/adding-voices.md` for the full step-by-step checklist.
+See `docs/adding-voices.md` for the full step-by-step checklist (including **`language_ids`** per persona).
+
+## Voice ↔ output language
+
+- Each manifest entry may include **`language_ids`** (e.g. `["en"]`, `["he"]`). Missing → **English only**.
+- The frontend only lists personas that support the **currently selected output language**; `/convert` validates the same pairing (400 if mismatched).
+- **On disk:** reference WAVs and previews live under **`voices/en/`**, **`voices/he/`**, etc.; `filename` / `preview_filename` in `voices.json` are paths relative to `voices/` (e.g. `en/Dave.wav`).
