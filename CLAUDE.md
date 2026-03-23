@@ -4,13 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Source of Truth
 
-- **Dev rules:** `.cursorrules` (canonical — read this first)
+- **Dev rules:** `.cursor/cursorrules` (canonical — read this first)
 - **Product spec:** `docs/superpowers/specs/2026-03-12-tts-web-app-prd.md`
 - **Build checklist:** `TASKS.md` (mark `[x]` when done, log to `CHANGELOG.md`)
-- **Library docs & pitfalls:** `skills.md`
+- **Library docs & pitfalls (project reference, not a Cursor Skill pack):** `library-reference.md`
 - **Parallel agent guide:** `subagents.md`
 
-For dev rules, architecture, and MVP boundaries, read `.cursorrules`.
+For dev rules, architecture, and MVP boundaries, read `.cursor/cursorrules`.
 
 ## Commands
 

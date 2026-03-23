@@ -39,7 +39,7 @@ def test_run_section_pipeline_happy_path(monkeypatch):
     monkeypatch.setattr(backend, "_resolve_voice_path", lambda v: "/tmp/voice.wav")
     # Fake TTS object with .generate_and_stitch_with_progress.remote_gen(...)
     fake_method = types.SimpleNamespace(
-        remote_gen=lambda chunks, voice_path: list(fake_updates)
+        remote_gen=lambda *args, **kwargs: list(fake_updates)
     )
     monkeypatch.setattr(
         backend,
@@ -96,9 +96,17 @@ def test_run_section_pipeline_passes_condition_params(monkeypatch):
     monkeypatch.setattr(backend, "job_store", store)
     monkeypatch.setattr(backend, "_resolve_voice_path", lambda v: "/tmp/voice.wav")
 
-    def remote_gen(chunks, voice_path, cfg_weight=None, exaggeration=None, temperature=None):
+    def remote_gen(
+        chunks,
+        voice_path,
+        language_id=None,
+        cfg_weight=None,
+        exaggeration=None,
+        temperature=None,
+    ):
         called.update(
             {
+                "language_id": language_id,
                 "cfg_weight": cfg_weight,
                 "exaggeration": exaggeration,
                 "temperature": temperature,
@@ -126,6 +134,7 @@ def test_run_section_pipeline_passes_condition_params(monkeypatch):
     job = store[section_id]
     assert job["state"] == "complete"
     assert job["mp3"] == b"fake-mp3"
+    assert called["language_id"] == "en"
     assert called["cfg_weight"] == 0.9
     assert called["exaggeration"] == 0.7
     assert called["temperature"] == 0.6

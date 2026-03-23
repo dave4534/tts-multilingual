@@ -1,0 +1,91 @@
+# Cursor Rules — TTS Web App
+
+> **This is the canonical rules file.** Product spec: `docs/superpowers/specs/2026-03-12-tts-web-app-prd.md`. For questions about product, read the PRD. For dev rules, read this file.
+
+## MANDATORY — Before Completing Any Task
+
+1. **Backend (Modal) changed?** → State "Redeploy required" and run: `python3 -m modal deploy modal_app/main.py` from project root.
+2. **Frontend code changed?** → State "Dev server refresh" and **start or restart the Vite dev server yourself** by running `npm run dev` in `frontend/` (do not ask the user to run it).
+3. **Never** ask the user to run Modal deploy or `npm run dev` — run them in the terminal yourself when applicable.
+
+### What this does *not* mean (avoid confusion)
+
+- **"Restart" in item 2 = the local Vite process**, not restarting the **Cursor application** or reloading MCP.
+- The agent **cannot** restart Cursor, reload the IDE window, or apply MCP config changes to a running Cursor session. Those are **host actions only**. If MCP or Cursor settings were edited outside the repo (e.g. `~/.cursor/mcp.json`), say once: *only you can reload the window or restart Cursor so MCP picks up changes* — do not imply the agent can do that step.
+
+## Project Overview
+Text-to-speech web app. Users paste text or upload files, select a voice, convert to MP3.
+
+## Task Tracking
+- Before marking done: follow the MANDATORY operational checklist above.
+- Read `TASKS.md` for the current build checklist
+- Follow the phase and task order in `TASKS.md` strictly. Do not suggest skipping phases or doing tasks out of order (e.g. Phase 3 before Phase 2). Respect dependencies: later phases often depend on outputs of earlier phases.
+- After completing each task: describe how to test it, then ask if the user wants you to update `TASKS.md`, `CHANGELOG.md`, and push to GitHub. Do not update or push until the user confirms.
+- When confirmed: mark task `[x]` in `TASKS.md`, add one-line summary to `CHANGELOG.md`, commit and push.
+
+## Architecture (2 layers)
+1. **Frontend:** React + Tailwind CSS + Shadcn UI → deployed to Vercel
+2. **Backend + GPU:** Python / FastAPI + Chatterbox Multilingual → all on Modal (serverless)
+
+There is NO separate backend service. Modal hosts everything: the API (via `@modal.asgi_app()`), file parsing, chunking, TTS generation, and audio stitching. The stack is just Vercel + Modal.
+
+## Critical Rules
+
+### Modal (Backend API + GPU Worker)
+- Serve the FastAPI app using `@modal.asgi_app()` on Modal.
+- Use CPU functions for lightweight work: file parsing, chunking, progress tracking, serving files.
+- Use GPU functions for heavy work: **Chatterbox Multilingual** generation and audio stitching (pydub + ffmpeg).
+- Process chunks **sequentially** in the same GPU container. Do NOT use `.starmap()` or `.map()` across containers — each container reload costs 30–60s and causes jobs to hang.
+- Stitch all audio chunks into a single MP3 on the GPU function. Return only the final MP3.
+- Install ffmpeg and pydub in the Modal image.
+- Voice reference clips are bundled in the Modal image.
+- Use PyMuPDF (`import fitz`) for PDF parsing. Do NOT use PyPDF2.
+- Reference: https://modal.com/docs/examples/chatterbox_tts
+
+### Frontend (React)
+- Use Tailwind CSS + Shadcn UI. Shadcn provides components; Tailwind provides utilities. No other CSS framework.
+- Single page app, no routing needed.
+- Voice cards: horizontal row on desktop, vertical stack on mobile.
+- Poll backend every 2 seconds for progress during conversion.
+- Show "Warming up..." during Modal cold start before progress percentage kicks in.
+
+
+### Error Handling
+- Follow error messages exactly as specified in the PRD error handling table.
+- Retry failed chunks up to 3 times silently before showing an error to the user.
+
+### Testing
+- After any change to `modal_app/main.py`, write a pytest test for it in `modal_app/tests/` and confirm it passes before marking the task done.
+- Backend tests are more valuable than frontend tests — all the real processing happens there.
+- Focus on: route responses (`/convert`, `/job/{id}/status`), `chunk_text()` edge cases (blank lines, `\r\n`, empty input, long text), and the full job lifecycle (submit → poll → complete).
+
+### Planning & Context
+- Do not create plan files in `.cursor/plans/` unless the user explicitly requests a formal plan.
+- Prefer direct implementation over creating planning documents.
+
+### Code Style
+- Python: use type hints, async where appropriate, follow PEP 8.
+- TypeScript/React: functional components, hooks, no class components.
+- Keep files focused — one component per file, one endpoint group per router file.
+
+
+
+### Chatterbox (GPU)
+- Use **`from chatterbox.mtl_tts import ChatterboxMultilingualTTS`** for this app (23+ languages). Do not use the English-only `ChatterboxTTS` class for synthesis here.
+- Every `generate()` call requires a **`language_id`** (e.g. `en`, `he`). Default in API is `en`.
+- Call **`prepare_conditionals(voice_path)` once** before the per-chunk loop, not inside each iteration.
+
+### Modal Deploy
+- Always run `modal deploy` from the **project root**, not from inside `modal_app/` — the `voices/` directory is resolved relative to where you run the command
+- After every deploy, sanity-check: hit `/health`, submit a short text job, poll until complete
+
+### Up-to-date library docs (Context7)
+- When implementing or debugging **third-party library APIs** (Modal Python SDK, FastAPI, React, Vite, etc.), use the **Context7** MCP if it is enabled: call `resolve-library-id` then `query-docs`, or ask the user to include **“use context7”** in the prompt.
+- For **Chatterbox + this app’s TTS pipeline**, still treat **`library-reference.md`**, **`modal.com/docs/examples/chatterbox_tts`**, and the PRD as authoritative when they conflict with generic snippets.
+
+## Reference Files
+- `docs/superpowers/specs/2026-03-12-tts-web-app-prd.md` — Full PRD
+- `TASKS.md` — Build checklist
+- `CHANGELOG.md` — Change log
+- `library-reference.md` — Library links, architecture notes, common pitfalls
+

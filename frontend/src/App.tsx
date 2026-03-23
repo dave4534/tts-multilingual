@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { TextInput, MAX_WORDS, countWords } from "@/components/TextInput";
 import { FileUpload } from "@/components/FileUpload";
 import { VoiceSelector } from "@/components/VoiceSelector";
@@ -108,39 +108,6 @@ function App() {
   const showFileUpload =
     bottomBarStatus === "idle" && text.trim().length === 0;
 
-  const mainRef = useRef<HTMLElement>(null);
-  const sectionRef = useRef<HTMLElement>(null);
-  const voiceRowRef = useRef<HTMLDivElement>(null);
-  const textWrapperRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const log = (): void => {
-      if (!mainRef.current || !sectionRef.current) return;
-      const main = mainRef.current;
-      const section = sectionRef.current;
-      const mainRect = main.getBoundingClientRect();
-      const uploadZone = document.querySelector("[data-upload-zone]");
-      const footer = document.querySelector("footer[role='contentinfo']");
-      const textWrapper = textWrapperRef.current;
-      const payload = {
-        mainPaddingTop: parseFloat(getComputedStyle(main).paddingTop),
-        mainPaddingLeft: parseFloat(getComputedStyle(main).paddingLeft),
-        mainPaddingRight: parseFloat(getComputedStyle(main).paddingRight),
-        mainPaddingBottom: parseFloat(getComputedStyle(main).paddingBottom),
-        sectionGap: parseFloat(getComputedStyle(section).gap),
-        uploadZoneLeft: uploadZone ? (uploadZone as HTMLElement).getBoundingClientRect().left - mainRect.left : null,
-        uploadZoneRight: uploadZone ? mainRect.right - (uploadZone as HTMLElement).getBoundingClientRect().right : null,
-        footerTop: footer ? (footer as HTMLElement).getBoundingClientRect().top : null,
-        uploadZoneBottom: uploadZone ? (uploadZone as HTMLElement).getBoundingClientRect().bottom : null,
-        gapUploadToFooter: uploadZone && footer ? (footer as HTMLElement).getBoundingClientRect().top - (uploadZone as HTMLElement).getBoundingClientRect().bottom : null,
-        textWrapperMarginRight: textWrapper ? parseFloat(getComputedStyle(textWrapper).marginRight) : null,
-        showFileUpload,
-      };
-      fetch('http://127.0.0.1:7616/ingest/9f1d2e0e-b35a-4f4a-bf9e-e8a6a58930f3',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'635054'},body:JSON.stringify({sessionId:'635054',location:'App.tsx:useEffect',message:'layout spacing',data:payload,hypothesisId:'H1,H2,H3,H4,H5',timestamp:Date.now()})}).catch(()=>{});
-    };
-    const t = setTimeout(log, 100);
-    return () => clearTimeout(t);
-  }, [showFileUpload]);
-
   const debugLayout = false; /* Set to true to show layout debug strips */
   return (
     <div
@@ -189,7 +156,6 @@ function App() {
               className="debug-bg-left-pane relative z-0 flex min-h-0 flex-1 flex-col min-w-0"
             >
           <main
-            ref={mainRef}
             className="flex min-h-[40vh] flex-1 flex-col overflow-hidden sm:min-h-0"
             style={{
               paddingTop: 0,
@@ -222,11 +188,8 @@ function App() {
                 </div>
               </div>
             )}
-            <section
-              ref={sectionRef}
-              className="flex min-h-0 w-full flex-1 flex-col"
-            >
-              <div ref={voiceRowRef} className="flex shrink-0 items-center justify-between gap-3 max-sm:hidden">
+            <section className="flex min-h-0 w-full flex-1 flex-col">
+              <div className="flex shrink-0 items-center justify-between gap-3 max-sm:hidden">
                 <div className="flex items-center gap-3 pl-0">
                   {selectedVoice && (
                     <SelectedVoicePill
@@ -277,10 +240,7 @@ function App() {
               />
 
               {/* text-input area: distinct from left-pane for layout debug */}
-              <div
-                ref={textWrapperRef}
-                className="min-h-0 flex-1 flex flex-col min-w-0 bg-card"
-              >
+              <div className="min-h-0 flex-1 flex flex-col min-w-0 bg-card">
                 <TextInput
                   value={text}
                   onChange={setText}

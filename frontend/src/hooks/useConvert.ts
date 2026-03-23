@@ -23,9 +23,6 @@ export function useConvert() {
 
   const startConvert = useCallback(
     async (textOrFile: string | File, voiceId: string) => {
-      // #region agent log
-      fetch("http://127.0.0.1:7616/ingest/9f1d2e0e-b35a-4f4a-bf9e-e8a6a58930f3", { method: "POST", headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "2928a6" }, body: JSON.stringify({ sessionId: "2928a6", location: "useConvert.ts:start", message: "startConvert", data: { type: typeof textOrFile }, timestamp: Date.now(), hypothesisId: "A" }) }).catch(() => {});
-      // #endregion
       stopPolling();
       setState({ status: "submitting" });
       try {
@@ -33,17 +30,11 @@ export function useConvert() {
           typeof textOrFile === "string"
             ? await convert(textOrFile, voiceId)
             : await convertWithFile(textOrFile, voiceId);
-        // #region agent log
-        fetch("http://127.0.0.1:7616/ingest/9f1d2e0e-b35a-4f4a-bf9e-e8a6a58930f3", { method: "POST", headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "2928a6" }, body: JSON.stringify({ sessionId: "2928a6", location: "useConvert.ts:convertOk", message: "got job_id", data: { job_id }, timestamp: Date.now(), hypothesisId: "B" }) }).catch(() => {});
-        // #endregion
         setState({ status: "polling", jobId: job_id, progress: 0, state: "queued" });
 
         const poll = () => {
           getJobStatus(job_id)
             .then((s: JobStatus) => {
-              // #region agent log
-              fetch("http://127.0.0.1:7616/ingest/9f1d2e0e-b35a-4f4a-bf9e-e8a6a58930f3", { method: "POST", headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "2928a6" }, body: JSON.stringify({ sessionId: "2928a6", location: "useConvert.ts:poll", message: "status", data: { state: s.state, progress: s.progress }, timestamp: Date.now(), hypothesisId: "C" }) }).catch(() => {});
-              // #endregion
               if (s.state === "complete") {
                 setState({ status: "complete", jobId: job_id, downloadUrl: getDownloadUrl(job_id) });
                 stopPolling();
@@ -55,9 +46,6 @@ export function useConvert() {
               }
             })
             .catch((e) => {
-              // #region agent log
-              fetch("http://127.0.0.1:7616/ingest/9f1d2e0e-b35a-4f4a-bf9e-e8a6a58930f3", { method: "POST", headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "2928a6" }, body: JSON.stringify({ sessionId: "2928a6", location: "useConvert.ts:pollErr", message: "poll failed", data: { err: String(e) }, timestamp: Date.now(), hypothesisId: "D" }) }).catch(() => {});
-              // #endregion
               setState({
                 status: "failed",
                 error: e instanceof Error ? e.message : "Connection lost. Please try again.",
@@ -69,9 +57,6 @@ export function useConvert() {
         pollRef.current = setInterval(poll, POLL_INTERVAL_MS);
         poll(); // first poll immediately
       } catch (e) {
-        // #region agent log
-        fetch("http://127.0.0.1:7616/ingest/9f1d2e0e-b35a-4f4a-bf9e-e8a6a58930f3", { method: "POST", headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "2928a6" }, body: JSON.stringify({ sessionId: "2928a6", location: "useConvert.ts:convertErr", message: "convert failed", data: { err: String(e) }, timestamp: Date.now(), hypothesisId: "E" }) }).catch(() => {});
-        // #endregion
         setState({
           status: "failed",
           error: e instanceof Error ? e.message : "Something went wrong. Please try again.",

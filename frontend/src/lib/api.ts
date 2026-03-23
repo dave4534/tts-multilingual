@@ -38,14 +38,20 @@ export async function getVoices(): Promise<{ voices: Voice[] }> {
   return res.json();
 }
 
+/** Chatterbox Multilingual BCP-ish codes: en, he, fr, … (default en). */
 export async function convert(
   text: string,
-  voiceId: string
+  voiceId: string,
+  languageId: string = "en"
 ): Promise<ConvertResponse> {
   const res = await fetch(`${API_BASE}/convert`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text, voice_id: voiceId }),
+    body: JSON.stringify({
+      text,
+      voice_id: voiceId,
+      language_id: languageId,
+    }),
   });
   if (!res.ok) {
     const body = await res.text();
@@ -56,11 +62,13 @@ export async function convert(
 
 export async function convertWithFile(
   file: File,
-  voiceId: string
+  voiceId: string,
+  languageId: string = "en"
 ): Promise<ConvertResponse> {
   const formData = new FormData();
   formData.append("file", file);
   formData.append("voice_id", voiceId);
+  formData.append("language_id", languageId);
   const res = await fetch(`${API_BASE}/convert`, {
     method: "POST",
     body: formData,

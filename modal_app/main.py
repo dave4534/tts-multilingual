@@ -1,7 +1,7 @@
 """
 TTS Web App — Modal backend.
 
-FastAPI API (via @modal.asgi_app) + Chatterbox GPU workers.
+FastAPI API (via @modal.asgi_app) + Chatterbox Multilingual GPU workers.
 Serves file parsing, chunking, TTS generation, and audio stitching.
 """
 
@@ -18,6 +18,45 @@ import modal
 
 
 SECTION_MAX_WORDS = 1000
+
+# ChatterboxMultilingualTTS language codes (see chatterbox.mtl_tts.SUPPORTED_LANGUAGES)
+SUPPORTED_MTL_LANGUAGE_IDS: frozenset[str] = frozenset({
+    "ar",
+    "da",
+    "de",
+    "el",
+    "en",
+    "es",
+    "fi",
+    "fr",
+    "he",
+    "hi",
+    "it",
+    "ja",
+    "ko",
+    "ms",
+    "nl",
+    "no",
+    "pl",
+    "pt",
+    "ru",
+    "sv",
+    "sw",
+    "tr",
+    "zh",
+})
+DEFAULT_LANGUAGE_ID = "en"
+
+
+def normalize_language_id(language_id: str) -> str:
+    """Return lowercase BCP-47-ish code for Chatterbox Multilingual, or raise ValueError."""
+    lid = (language_id or DEFAULT_LANGUAGE_ID).strip().lower()
+    if lid not in SUPPORTED_MTL_LANGUAGE_IDS:
+        supported = ", ".join(sorted(SUPPORTED_MTL_LANGUAGE_IDS))
+        raise ValueError(
+            f"Unsupported language_id '{language_id}'. Supported: {supported}"
+        )
+    return lid
 
 
 @dataclass
@@ -83,6 +122,7 @@ def build_parent_and_section_jobs(
     text: str,
     voice_id: str,
     max_words: int = SECTION_MAX_WORDS,
+    language_id: str = DEFAULT_LANGUAGE_ID,
 ) -> Tuple[Dict, List[Dict]]:
     """Pure helper to construct parent + section job dicts for long-form input.
 
@@ -95,6 +135,7 @@ def build_parent_and_section_jobs(
         "kind": "parent",
         "text": text,
         "voice_id": voice_id,
+        "language_id": language_id,
         "state": "queued",
         "progress": 0,
         "error": None,
@@ -112,6 +153,7 @@ def build_parent_and_section_jobs(
                 "index": index,
                 "text": section_text,
                 "voice_id": voice_id,
+                "language_id": language_id,
                 "state": "queued",
                 "progress": 0,
                 "error": None,
@@ -170,12 +212,10 @@ VOICES_DIR = "/voices"
 VOICES_CUSTOM_PATH = "/voices-custom"
 
 
-def _download_chatterbox_weights():
-    """Download Chatterbox model weights at image build time. Baked into image to eliminate HF download on cold start."""
-    from chatterbox.tts import ChatterboxTTS
-
-    ChatterboxTTS.from_pretrained(device="cpu")  # Caches weights to disk; no GPU needed
-
+# Note: We do not bake Chatterbox Multilingual weights at image build time.
+# `mtl_tts.from_pretrained(device="cpu")` fails: s3gen.pt was saved on CUDA and
+# torch.load hits "deserialize on CUDA but cuda not available" on CPU builders.
+# First GPU @modal.enter loads from HuggingFace (requires `hf-token` secret).
 
 image = (
     modal.Image.debian_slim(python_version="3.11")
@@ -187,9 +227,8 @@ image = (
         f"rm /tmp/voices.zip"
     )
     .run_commands(
-        "pip install numpy && pip install --no-build-isolation chatterbox-tts==0.1.3 pydub torch torchaudio"
+        "pip install numpy && pip install --no-build-isolation chatterbox-tts==0.1.6 pydub torch torchaudio"
     )
-    .run_function(_download_chatterbox_weights, secrets=[modal.Secret.from_name("hf-token")])
     .add_local_dir("voices", VOICES_CUSTOM_PATH)
 )
 
@@ -258,6 +297,7 @@ def run_tts_pipeline(job_id: str) -> None:
         text = job["text"]
         voice_id = job["voice_id"]
         voice_path = _resolve_voice_path(voice_id)
+        language_id = str(job.get("language_id") or DEFAULT_LANGUAGE_ID).lower()
         chunks = chunk_text(text)
         if not chunks:
             job_store[job_id] = {**job, "state": "failed", "error": "No text to convert"}
@@ -269,11 +309,14 @@ def run_tts_pipeline(job_id: str) -> None:
         tts = ChatterboxTTS()
         mp3_bytes = b""
         if cfg_weight is None and exaggeration is None and temperature is None:
-            updates = tts.generate_and_stitch_with_progress.remote_gen(chunks, voice_path)
+            updates = tts.generate_and_stitch_with_progress.remote_gen(
+                chunks, voice_path, language_id=language_id
+            )
         else:
             updates = tts.generate_and_stitch_with_progress.remote_gen(
                 chunks,
                 voice_path,
+                language_id=language_id,
                 cfg_weight=cfg_weight if cfg_weight is not None else 0.5,
                 exaggeration=exaggeration if exaggeration is not None else 0.5,
                 temperature=temperature if temperature is not None else 0.8,
@@ -323,6 +366,7 @@ def run_section_pipeline(section_id: str) -> None:
         text = job["text"]
         voice_id = job["voice_id"]
         voice_path = _resolve_voice_path(voice_id)
+        language_id = str(job.get("language_id") or DEFAULT_LANGUAGE_ID).lower()
         chunks = chunk_text(text)
         if not chunks:
             job_store[section_id] = {
@@ -338,11 +382,14 @@ def run_section_pipeline(section_id: str) -> None:
         tts = ChatterboxTTS()
         mp3_bytes = b""
         if cfg_weight is None and exaggeration is None and temperature is None:
-            updates = tts.generate_and_stitch_with_progress.remote_gen(chunks, voice_path)
+            updates = tts.generate_and_stitch_with_progress.remote_gen(
+                chunks, voice_path, language_id=language_id
+            )
         else:
             updates = tts.generate_and_stitch_with_progress.remote_gen(
                 chunks,
                 voice_path,
+                language_id=language_id,
                 cfg_weight=cfg_weight if cfg_weight is not None else 0.5,
                 exaggeration=exaggeration if exaggeration is not None else 0.5,
                 temperature=temperature if temperature is not None else 0.8,
@@ -470,6 +517,7 @@ def web() -> "FastAPI":
     class ConvertRequest(BaseModel):
         text: str
         voice_id: str
+        language_id: str = DEFAULT_LANGUAGE_ID
         cfg_weight: float | None = Field(default=None, ge=0.0, le=2.0)
         exaggeration: float | None = Field(default=None, ge=0.0, le=2.0)
         temperature: float | None = Field(default=None, ge=0.0, le=2.0)
@@ -508,6 +556,7 @@ def web() -> "FastAPI":
     def _process_convert(
         text: str,
         voice_id: str,
+        language_id: str = DEFAULT_LANGUAGE_ID,
         cfg_weight: float | None = None,
         exaggeration: float | None = None,
         temperature: float | None = None,
@@ -515,6 +564,10 @@ def web() -> "FastAPI":
         text = text.strip()
         if not text:
             raise HTTPException(400, "Text is required")
+        try:
+            lid = normalize_language_id(language_id)
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from e
         word_count = len(text.split())
         if word_count > MAX_WORDS:
             raise HTTPException(
@@ -531,6 +584,7 @@ def web() -> "FastAPI":
                 "progress": 0,
                 "text": text,
                 "voice_id": voice_id,
+                "language_id": lid,
                 **({"cfg_weight": cfg_weight} if cfg_weight is not None else {}),
                 **({"exaggeration": exaggeration} if exaggeration is not None else {}),
                 **({"temperature": temperature} if temperature is not None else {}),
@@ -541,7 +595,7 @@ def web() -> "FastAPI":
         # Long-form: create parent + section jobs and spawn section pipelines.
         parent_id = str(uuid.uuid4())
         parent_job, section_jobs = build_parent_and_section_jobs(
-            parent_id, text, voice_id, max_words=SECTION_MAX_WORDS
+            parent_id, text, voice_id, max_words=SECTION_MAX_WORDS, language_id=lid
         )
         if cfg_weight is not None:
             parent_job["cfg_weight"] = cfg_weight
@@ -566,6 +620,7 @@ def web() -> "FastAPI":
         request: Request,
         file: UploadFile | None = File(None),
         voice_id: str | None = Form(None),
+        language_id: str | None = Form(None),
         cfg_weight: float | None = Form(None),
         exaggeration: float | None = Form(None),
         temperature: float | None = Form(None),
@@ -575,6 +630,7 @@ def web() -> "FastAPI":
             return _process_convert(
                 text,
                 voice_id,
+                language_id=language_id or DEFAULT_LANGUAGE_ID,
                 cfg_weight=cfg_weight,
                 exaggeration=exaggeration,
                 temperature=temperature,
@@ -586,6 +642,7 @@ def web() -> "FastAPI":
             return _process_convert(
                 req.text,
                 req.voice_id,
+                language_id=req.language_id,
                 cfg_weight=req.cfg_weight,
                 exaggeration=req.exaggeration,
                 temperature=req.temperature,
@@ -708,19 +765,20 @@ with image.imports():
     experimental_options={"enable_gpu_snapshot": True},
 )
 class ChatterboxTTS:
-    """GPU-backed TTS: generates audio from text + voice reference clip."""
+    """GPU-backed Chatterbox **Multilingual** TTS + voice reference clip."""
 
     @modal.enter(snap=True)
     def load_model(self) -> None:
-        from chatterbox.tts import ChatterboxTTS as _ChatterboxTTS
+        from chatterbox.mtl_tts import ChatterboxMultilingualTTS
 
-        self.model = _ChatterboxTTS.from_pretrained(device="cuda")
+        self.model = ChatterboxMultilingualTTS.from_pretrained(device="cuda")
 
     @modal.method()
     def generate(
         self,
         text: str,
         voice_path: str,
+        language_id: str = DEFAULT_LANGUAGE_ID,
         cfg_weight: float = 0.5,
         exaggeration: float = 0.5,
         temperature: float = 0.8,
@@ -731,6 +789,7 @@ class ChatterboxTTS:
         Args:
             text: Input text (up to ~1000 chars per chunk).
             voice_path: Path to 6-10 second WAV reference clip.
+            language_id: Chatterbox Multilingual code (e.g. en, he, fr).
             cfg_weight: Conditioning strength for the reference clip.
             exaggeration: Emotion/prosody exaggeration parameter.
             temperature: Sampling temperature.
@@ -738,8 +797,10 @@ class ChatterboxTTS:
         Returns:
             WAV audio as bytes.
         """
+        lid = language_id.strip().lower()
         wav = self.model.generate(
             text,
+            lid,
             audio_prompt_path=voice_path,
             cfg_weight=cfg_weight,
             exaggeration=exaggeration,
@@ -755,6 +816,7 @@ class ChatterboxTTS:
         self,
         chunks: list[str],
         voice_path: str,
+        language_id: str = DEFAULT_LANGUAGE_ID,
         cfg_weight: float = 0.5,
         exaggeration: float = 0.5,
         temperature: float = 0.8,
@@ -765,6 +827,7 @@ class ChatterboxTTS:
         Args:
             chunks: List of text chunks (each up to ~1000 chars).
             voice_path: Path to 6-10 second WAV reference clip.
+            language_id: Chatterbox Multilingual code.
             cfg_weight: Conditioning strength for the reference clip.
             exaggeration: Emotion/prosody exaggeration parameter.
             temperature: Sampling temperature.
@@ -774,8 +837,9 @@ class ChatterboxTTS:
         """
         if not chunks:
             return []
+        lid = language_id.strip().lower()
         inputs = [
-            (chunk, voice_path, cfg_weight, exaggeration, temperature)
+            (chunk, voice_path, lid, cfg_weight, exaggeration, temperature)
             for chunk in chunks
         ]
         return list(self.generate.starmap(inputs, order_outputs=True))
@@ -807,6 +871,7 @@ class ChatterboxTTS:
         self,
         chunks: list[str],
         voice_path: str,
+        language_id: str = DEFAULT_LANGUAGE_ID,
         cfg_weight: float = 0.5,
         exaggeration: float = 0.5,
         temperature: float = 0.8,
@@ -817,6 +882,7 @@ class ChatterboxTTS:
         Args:
             chunks: List of text chunks (each up to ~1000 chars).
             voice_path: Path to 6-10 second WAV reference clip.
+            language_id: Chatterbox Multilingual code.
             cfg_weight: Conditioning strength for the reference clip.
             exaggeration: Emotion/prosody exaggeration parameter.
             temperature: Sampling temperature.
@@ -825,7 +891,7 @@ class ChatterboxTTS:
             Single MP3 as bytes.
         """
         segments = self.generate_batch.local(
-            chunks, voice_path, cfg_weight, exaggeration, temperature
+            chunks, voice_path, language_id, cfg_weight, exaggeration, temperature
         )
         return self.stitch.local(segments)
 
@@ -834,12 +900,13 @@ class ChatterboxTTS:
         self,
         chunks: list[str],
         voice_path: str,
+        language_id: str = DEFAULT_LANGUAGE_ID,
         cfg_weight: float = 0.5,
         exaggeration: float = 0.5,
         temperature: float = 0.8,
     ):
         """
-        Generate TTS for chunks in parallel, stitch to MP3, yield progress per chunk.
+        Generate TTS for chunks sequentially, stitch to MP3, yield progress per chunk.
 
         Yields:
             {"progress": int, "chunk": int, "total": int} for each chunk completed.
@@ -849,6 +916,7 @@ class ChatterboxTTS:
             yield {"progress": 100, "chunk": 0, "total": 0, "mp3": b""}
             return
         n = len(chunks)
+        lid = language_id.strip().lower()
 
         # Load voice reference once — avoids re-processing WAV per chunk
         import torch
@@ -859,6 +927,7 @@ class ChatterboxTTS:
             print(f"[TTS] chunk {i+1}/{n} start: {chunk[:60]!r}", flush=True)
             wav = self.model.generate(
                 chunk,
+                lid,
                 cfg_weight=cfg_weight,
                 exaggeration=exaggeration,
                 temperature=temperature,
@@ -880,6 +949,7 @@ class ChatterboxTTS:
         text: str,
         voice_path: str,
         cfg_weights: list[float],
+        language_id: str = DEFAULT_LANGUAGE_ID,
         exaggeration: float = 0.5,
         temperature: float = 0.8,
     ) -> dict[str, bytes]:
@@ -893,6 +963,7 @@ class ChatterboxTTS:
 
         import torch
 
+        lid = language_id.strip().lower()
         # Prepare conditionals once; cfg_weight is applied during generate.
         self.model.prepare_conditionals(voice_path, exaggeration=exaggeration)
         results: dict[str, bytes] = {}
@@ -901,6 +972,7 @@ class ChatterboxTTS:
             print(f"[cfg_sweep] cfg_weight={cfg_weight}", flush=True)
             wav = self.model.generate(
                 text,
+                lid,
                 cfg_weight=cfg_weight,
                 exaggeration=exaggeration,
                 temperature=temperature,

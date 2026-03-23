@@ -4,7 +4,7 @@
 > After completing each task, mark it `[x]` and add a one-line summary to `CHANGELOG.md`.
 
 **Deployed URLs:**
-- Frontend: `https://kolmemaybe.vercel.app/` *(update once Vercel project is created)*
+- Frontend: `https://tts-multilingual.vercel.app/`
 - Backend API: `https://dave4534--tts-multilingual-api.modal.run`
 
 ---

@@ -1,18 +1,21 @@
-# Skills & Domain Knowledge
+# Project reference (libraries & pitfalls)
 
-Reference for AI coding assistants working on this project.
+**What this is:** Engineering notes for humans and AI assistants — *not* a Cursor “Skill” file (`SKILL.md` lives elsewhere and has a different format). For workflow and MVP rules, use `.cursor/cursorrules`; for product scope, use the PRD; for the build checklist, use `TASKS.md`.
 
 ---
 
 ## Key Libraries
 
 ### Chatterbox Multilingual (TTS Engine)
-- **Docs:** https://github.com/resemble-ai/chatterbox
+- **Docs:** https://github.com/resemble-ai/chatterbox (same `chatterbox-tts` PyPI package)
 - **Modal example:** https://modal.com/docs/examples/chatterbox_tts
-- **Model:** 0.5B parameters, MIT licensed
-- **Voice cloning:** Zero-shot from 6-second reference audio clip
-- **Languages:** 23 including English and Hebrew
-- **Chunk limit:** ~300 characters per call — must chunk and stitch longer text
+- **Pinned in image:** `chatterbox-tts==0.1.6` — import **`from chatterbox.mtl_tts import ChatterboxMultilingualTTS`**
+- **Weights:** Loaded on first **GPU** container start from HuggingFace (`hf-token` Modal secret). Not baked at CPU image-build time (multilingual checkpoint tensors are CUDA-serialized).
+- **API:** `ChatterboxMultilingualTTS.from_pretrained(device=...)` then `generate(text, language_id, audio_prompt_path=..., cfg_weight=..., exaggeration=..., temperature=...)` or `prepare_conditionals` + `generate` without `audio_prompt_path` per chunk
+- **Model:** 500M multilingual, MIT licensed
+- **Voice cloning:** Zero-shot from reference audio clip; **reference language should match `language_id`** when possible (see upstream README for `cfg_weight=0` cross-language tips)
+- **Languages:** `ar`, `da`, `de`, `el`, `en`, `es`, `fi`, `fr`, `he`, `hi`, `it`, `ja`, `ko`, `ms`, `nl`, `no`, `pl`, `pt`, `ru`, `sv`, `sw`, `tr`, `zh`
+- **Chunk limit:** ~300 characters per call for stable generation — chunk and stitch longer text
 - **Long text handling:** See https://github.com/devnen/Chatterbox-TTS-Server for chunking patterns
 
 ### Modal (Serverless Backend + GPU)
@@ -21,9 +24,9 @@ Reference for AI coding assistants working on this project.
 - **Key patterns:**
   - `@modal.asgi_app()` — serve a full FastAPI app on Modal (this is our backend)
   - `@modal.function()` — define CPU or GPU functions
-  - `.map()` — parallel execution across multiple inputs
   - `modal.Image` — define container image with dependencies (ffmpeg, pydub, PyMuPDF, etc.)
-- **Cold starts:** 1-4 seconds typical
+  - **TTS jobs:** Do **not** use `.map()` / `.starmap()` across GPU containers for chunk TTS — see `.cursor/cursorrules`. (`.map()` is fine for other unrelated parallel work, not our chunk pipeline.)
+- **Cold starts:** API can wake quickly; **GPU** workers often take much longer on cold start — see PRD / UX copy (“Warming up…”).
 - **Important:** Modal hosts BOTH the API and GPU workers. There is no separate backend service.
 
 ### FastAPI (API Framework)
@@ -40,7 +43,7 @@ Reference for AI coding assistants working on this project.
 - **Tailwind:** https://tailwindcss.com — utility-first CSS
 - **Shadcn:** https://ui.shadcn.com — accessible, copy-paste components built on Radix UI + Tailwind
 - **Note:** Shadcn requires Tailwind. Use Shadcn for buttons, cards, progress bars, inputs; use Tailwind utilities for layout and custom styling.
-- **Init:** Run `npx shadcn@latest init` in the frontend directory after Vite + Tailwind are set up.
+- **Init (already done for this repo):** `npx shadcn@latest init` in `frontend/` only when bootstrapping a *new* app from scratch.
 
 ### pydub + ffmpeg (Audio Stitching)
 - **Docs:** https://github.com/jiaaro/pydub
@@ -62,16 +65,6 @@ Reference for AI coding assistants working on this project.
 - **Empty state (no text):** FileUpload zone is shown, fixed 24px above the BottomBar. Text area is small; drag-and-drop is the primary input.
 - **With text (pasted or from file):** FileUpload is hidden. Text area fills the entire left pane between the voice pill and BottomBar, with 24px padding above and below. Only the textarea scrolls.
 - **Layout constants:** `frontend/src/lib/layout-constants.ts` — edit to adjust spacing. FileUpload shows only when `bottomBarStatus === "idle" && text.trim().length === 0`.
-
-## Common Pitfalls
-
-1. **Don't create a separate backend service** — everything runs on Modal
-2. **Don't process chunks sequentially** — use Modal's `.map()` for parallel batches (except where `.cursorrules` explicitly calls for sequential processing in a single GPU container for long-form jobs)
-3. **Don't use PyPDF2** — use PyMuPDF (`fitz`) for reliable PDF extraction
-4. **Chunk at sentence boundaries** — don't split mid-word or mid-sentence (causes audio artifacts)
-5. **Voice clips must be normalized** — inconsistent volume across clips = bad UX
-6. **CORS** — Modal-hosted FastAPI must allow the Vercel frontend origin, configure early
-7. **Bundle voice clips in the Modal image** — they're static assets, include them at build time
 
 ---
 

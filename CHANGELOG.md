@@ -7,6 +7,7 @@ Format: `[Task ID] One-line summary`
 
 ## Recent
 
+- [TTS] Switched GPU synthesis to **Chatterbox Multilingual** (`chatterbox.mtl_tts.ChatterboxMultilingualTTS`, `chatterbox-tts==0.1.6`); `/convert` accepts optional `language_id` (default `en`); validate against 23 supported codes; HF weights load on first GPU start (not baked at CPU image build — multilingual ckpt incompatible with CPU torch.load)
 - [UI] Minor UI adjustments: light mode white backgrounds (left-pane, voice cards, semantic tokens); dark mode neutral-950 for left-pane and voice cards; scroll thumb neutral-300/700; avatar circles fixed 300-shade palette; header/footer/sidebar neutral-50 light; drag-drop neutral-50/900
 - [voice] Added Vered persona (Vered.wav), removed Upbeat young woman
 
