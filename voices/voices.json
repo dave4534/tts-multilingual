@@ -1,0 +1,60 @@
+{
+  "voices": [
+    {
+      "id": "lucy",
+      "name": "Lucy",
+      "description": "Sample voice for development",
+      "builtin": true,
+      "preview_filename": "lucy-preview.mp3"
+    },
+    {
+      "id": "Ram Dass",
+      "name": "Ram Dass",
+      "description": "Warm, reflective, meditative narrator tone",
+      "filename": "Ram-Dass.wav",
+      "preview_filename": "ram-dass-preview.mp3"
+    },
+    {
+      "id": "dave",
+      "name": "Dave",
+      "description": "Conversational, balanced narrator tone",
+      "filename": "Dave.wav",
+      "preview_filename": "dave-preview.mp3"
+    },
+    {
+      "id": "aba",
+      "name": "Gentle young man",
+      "description": "Soft-spoken, tuned — good for bedtime stories",
+      "filename": "Aba.wav",
+      "preview_filename": "aba-preview.mp3"
+    },
+    {
+      "id": "mikey",
+      "name": "Mikey",
+      "description": "Friendly, engaging narrator — good for podcasts and casual content",
+      "filename": "Mikey.wav",
+      "preview_filename": "mikey-preview.mp3"
+    },
+    {
+      "id": "vered",
+      "name": "Vered",
+      "description": "Warm, articulate narrator — good for storytelling and presentations",
+      "filename": "Vered.wav",
+      "preview_filename": "vered-preview.mp3"
+    },
+    {
+      "id": "professional-man",
+      "name": "Professional man",
+      "description": "Clear, neutral, newscaster-style",
+      "filename": "professional-man.wav",
+      "preview_filename": "professional-man-preview.mp3"
+    },
+    {
+      "id": "professional-woman",
+      "name": "Professional woman",
+      "description": "Clear, confident, corporate/presentation tone",
+      "filename": "professional-woman.wav",
+      "preview_filename": "professional-woman-preview.mp3"
+    }
+  ]
+}

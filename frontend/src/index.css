@@ -1,0 +1,235 @@
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+@import "@fontsource/fraunces/400.css";
+@import "@fontsource/fraunces/600.css";
+@import "@fontsource/fraunces/700.css";
+@import "@fontsource/lato/400.css";
+@import "@fontsource/lato/700.css";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-display: "Fraunces", serif;
+  --font-body: "Lato", sans-serif;
+
+  font: 18px/145% var(--font-body);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+
+  @media (max-width: 1024px) {
+    font-size: 16px;
+  }
+}
+
+/* Theme is controlled by .light / .dark class on html — no media query override */
+
+#root {
+  width: 100%;
+  max-width: 100%;
+  margin: 0 auto;
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+h1,
+h2 {
+  font-family: var(--font-display);
+  font-weight: 600;
+}
+
+h1 {
+  font-size: 56px;
+  letter-spacing: -1.68px;
+  margin: 32px 0;
+  @media (max-width: 1024px) {
+    font-size: 36px;
+    margin: 20px 0;
+  }
+}
+h2 {
+  font-size: 24px;
+  line-height: 118%;
+  letter-spacing: -0.24px;
+  margin: 0 0 8px;
+  @media (max-width: 1024px) {
+    font-size: 20px;
+  }
+}
+p {
+  margin: 0;
+}
+
+code,
+.counter {
+  font-family: var(--font-body);
+  display: inline-flex;
+  border-radius: 4px;
+  color: oklch(var(--foreground));
+  background: oklch(var(--muted));
+}
+
+code {
+  font-size: 15px;
+  line-height: 135%;
+  padding: 4px 8px;
+}
+
+@layer base {
+  /* Palette: amber-50 = hsl(48 100% 96.1%) ≈ oklch(0.976 0.038 86) */
+  :root, .light, .dark {
+    --amber-50: 0.976 0.038 86;
+  }
+
+  /* Non-color layout tokens (kept as app-specific) */
+  :root, .light, .dark {
+    --z-base: 0;
+    --z-overlay: 10;
+    --z-modal: 100;
+    --app-spacer-px: 25px;
+  }
+
+  /* Light theme – Shadcn semantic tokens. All backgrounds white. */
+  :root, .light {
+    color-scheme: light;
+    --background: 1 0 0;
+    --foreground: 0.15 0 0;
+    --card: 1 0 0;
+    --card-foreground: 0.15 0 0;
+    --popover: 1 0 0;
+    --popover-foreground: 0.15 0 0;
+    --primary: 0.42 0.07 185;
+    --primary-foreground: 0.99 0 0;
+    --secondary: 1 0 0;
+    --secondary-foreground: 0.2 0 0;
+    --muted: 1 0 0;
+    --muted-foreground: 0.2 0 0;
+    --accent: 1 0 0;
+    --accent-foreground: 0.2 0 0;
+    --destructive: 0.45 0.18 25;
+    --destructive-foreground: 0.99 0 0;
+    --border: 0.92 0 0;
+    --input: 0.92 0 0;
+    --ring: 0.42 0.07 185;
+    --radius: 0.625rem;
+    --sidebar: 1 0 0;
+    --sidebar-foreground: 0.15 0 0;
+    --sidebar-primary: 0.42 0.07 185;
+    --sidebar-primary-foreground: 0.99 0 0;
+    --sidebar-accent: 1 0 0;
+    --sidebar-accent-foreground: 0.15 0 0;
+    --sidebar-border: 0.92 0 0;
+    --sidebar-ring: 0.42 0.07 185;
+    --left-pane-bg: 1 0 0;
+  }
+
+  /* Dark theme – Shadcn semantic tokens */
+  .dark {
+    color-scheme: dark;
+    --background: 0.13 0 0;
+    --foreground: 0.92 0 0;
+    --card: 0.22 0 0;
+    --card-foreground: 0.92 0 0;
+    --popover: 0.22 0 0;
+    --popover-foreground: 0.92 0 0;
+    --primary: 0.65 0.12 185;
+    --primary-foreground: 0.13 0 0;
+    --secondary: 0.55 0.12 250;
+    --secondary-foreground: 0.95 0 0;
+    --muted: 0.55 0.12 300;
+    --muted-foreground: 0.95 0 0;
+    --accent: 0.55 0.12 55;
+    --accent-foreground: 0.15 0 0;
+    --destructive: 0.70 0.18 25;
+    --destructive-foreground: 0.99 0 0;
+    --border: 0.35 0 0;
+    --input: 0.35 0 0;
+    --ring: 0.65 0.12 185;
+    --sidebar: 0.18 0 0;
+    --sidebar-foreground: 0.92 0 0;
+    --sidebar-primary: 0.65 0.12 185;
+    --sidebar-primary-foreground: 0.13 0 0;
+    --sidebar-accent: 0.35 0 0;
+    --sidebar-accent-foreground: 0.92 0 0;
+    --sidebar-border: 0.35 0 0;
+    --sidebar-ring: 0.65 0.12 185;
+    --left-pane-bg: 0.13 0 0;
+  }
+
+  * {
+    @apply border-border;
+    outline-color: oklch(var(--ring) / 0.5);
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    font-family: var(--font-body);
+  }
+}
+
+/* Placeholder uses Shadcn muted-foreground */
+.app-placeholder::placeholder {
+  color: oklch(var(--muted-foreground));
+  font-family: inherit;
+  font-size: inherit;
+}
+
+/* Layout debug: Add data-debug-layout to the root to show colored strips and spacers.
+   Toggle via DEBUG_LAYOUT in App.tsx or add data-debug-layout to #root in main.tsx. */
+[data-debug-layout] .debug-strip-top {
+  background: oklch(var(--primary));
+}
+[data-debug-layout] .debug-strip-left {
+  background: oklch(var(--destructive));
+}
+[data-debug-layout] .debug-strip-right {
+  background: oklch(var(--secondary));
+}
+[data-debug-layout] .debug-spacer-voice-text {
+  background: oklch(var(--muted));
+}
+[data-debug-layout] .debug-spacer-footer {
+  background: oklch(var(--accent));
+}
+[data-debug-layout] .debug-scroll-track {
+  background: oklch(var(--muted) / 0.8);
+}
+.debug-bg-left-pane {
+  background: oklch(var(--left-pane-bg));
+}
+.debug-scroll-track {
+  background: transparent;
+}
+.debug-spacer-voice-text,
+.debug-spacer-footer {
+  background: transparent;
+}
+.debug-strip-top,
+.debug-strip-left,
+.debug-strip-right {
+  display: none;
+}
+[data-debug-layout] .debug-strip-top,
+[data-debug-layout] .debug-strip-left,
+[data-debug-layout] .debug-strip-right {
+  display: block;
+}
+
+/* Custom scrollbar: TextInput hides the native scrollbar and renders a custom one
+   (24px track, defined in layout-constants.ts). No native scrollbar CSS needed. */
+.scrollbar-none {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
