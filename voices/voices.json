@@ -60,22 +60,6 @@
       "filename": "en/Vered.wav",
       "language_ids": ["en"],
       "preview_filename": "en/vered-preview.mp3"
-    },
-    {
-      "id": "professional-man",
-      "name": "Professional man",
-      "description": "Clear, neutral, newscaster-style",
-      "filename": "en/professional-man.wav",
-      "language_ids": ["en"],
-      "preview_filename": "en/professional-man-preview.mp3"
-    },
-    {
-      "id": "professional-woman",
-      "name": "Professional woman",
-      "description": "Clear, confident, corporate/presentation tone",
-      "filename": "en/professional-woman.wav",
-      "language_ids": ["en"],
-      "preview_filename": "en/professional-woman-preview.mp3"
     }
   ]
 }
