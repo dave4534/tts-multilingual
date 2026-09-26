@@ -296,7 +296,7 @@ def extract_text_from_bytes(content: bytes, filename: str) -> str:
     if len(content) > MAX_FILE_MB * 1024 * 1024:
         raise ValueError(f"File exceeds {MAX_FILE_MB} MB limit.")
     suffix = Path(filename).suffix.lower()
-    if suffix == ".txt":
+    if suffix in (".txt", ".md"):
         return content.decode("utf-8", errors="replace")
     if suffix == ".pdf":
         import fitz
@@ -305,7 +305,7 @@ def extract_text_from_bytes(content: bytes, filename: str) -> str:
             return "\n".join(page.get_text() for page in doc)
         finally:
             doc.close()
-    raise ValueError("Please upload a .txt or .pdf file")
+    raise ValueError("Please upload a .txt, .md, or .pdf file")
 
 
 def _resolve_voice_path(voice_id: str) -> str:
@@ -593,7 +593,7 @@ def web() -> "FastAPI":
 
     @api.post("/extract-text")
     async def extract_text(file: UploadFile = File(...)) -> dict[str, str]:
-        """Extract text from .txt or .pdf for preview. Returns { text: string }."""
+        """Extract text from .txt, .md, or .pdf for preview. Returns { text: string }."""
         try:
             text = _extract_text_from_file(file)
             return {"text": text}

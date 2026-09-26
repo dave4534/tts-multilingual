@@ -17,6 +17,12 @@ def test_extract_txt_handles_utf8() -> None:
     assert result == "Café résumé"
 
 
+def test_extract_md_returns_content() -> None:
+    content = b"# Title\n\nParagraph with **bold** text."
+    result = extract_text_from_bytes(content, "readme.md")
+    assert result == "# Title\n\nParagraph with **bold** text."
+
+
 def test_extract_rejects_oversized_file() -> None:
     max_bytes = 10 * 1024 * 1024 + 1
     content = b"x" * max_bytes
@@ -31,5 +37,5 @@ def test_extract_accepts_file_under_limit() -> None:
 
 
 def test_extract_rejects_unsupported_format() -> None:
-    with pytest.raises(ValueError, match="Please upload a .txt or .pdf file"):
+    with pytest.raises(ValueError, match="Please upload a .txt, .md, or .pdf file"):
         extract_text_from_bytes(b"content", "file.docx")

@@ -5,7 +5,8 @@ import { UPLOAD_ZONE_BOTTOM_PX } from "@/lib/layout-constants";
 import { extractTextFromFile } from "@/lib/api";
 
 const MAX_MB = 10;
-const ACCEPT = ".txt,.pdf";
+const ACCEPT = ".txt,.md,.pdf";
+const TEXT_EXTENSIONS = new Set(["txt", "md"]);
 
 interface FileUploadProps {
   onFileSelect: (file: File, text: string) => void;
@@ -35,12 +36,12 @@ export function FileUpload({
       }
 
       const ext = file.name.split(".").pop()?.toLowerCase();
-      if (ext !== "txt" && ext !== "pdf") {
-        onError("Please upload a .txt or .pdf file.");
+      if (!ext || (!TEXT_EXTENSIONS.has(ext) && ext !== "pdf")) {
+        onError("Please upload a .txt, .md, or .pdf file.");
         return;
       }
 
-      if (ext === "txt") {
+      if (TEXT_EXTENSIONS.has(ext)) {
         const reader = new FileReader();
         reader.onload = () => {
           onFileSelect(file, reader.result as string);
@@ -138,7 +139,7 @@ export function FileUpload({
         {isExtracting ? "Extracting text..." : "Click to upload or drag and drop"}
       </p>
       <p className="text-center text-sm text-muted-foreground">
-        {isExtracting ? "Please wait" : "Extract text via .txt or .pdf files of up to 10MB each"}
+        {isExtracting ? "Please wait" : "Extract text via .txt, .md, or .pdf files of up to 10MB each"}
       </p>
       <div className="flex items-center gap-2">
         <span className="text-xs text-muted-foreground">
