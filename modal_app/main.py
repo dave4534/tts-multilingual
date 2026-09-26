@@ -8,8 +8,10 @@ Serves file parsing, chunking, TTS generation, and audio stitching.
 import hashlib
 import io
 import json
+import logging
 import re
 import sys
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -361,6 +363,7 @@ def run_tts_pipeline(job_id: str) -> None:
                     "state": "complete",
                     "progress": 100,
                     "mp3": mp3_bytes,
+                    "completed_at": time.time(),
                 }
             else:
                 job_store[job_id] = {
@@ -368,11 +371,6 @@ def run_tts_pipeline(job_id: str) -> None:
                     "state": "processing",
                     "progress": update["progress"],
                 }
-        import time
-
-        entries = completed_jobs.get(COMPLETED_JOBS_KEY, [])
-        entries.append((job_id, time.time()))
-        completed_jobs[COMPLETED_JOBS_KEY] = entries
     except BaseException as e:
         # Surface backend error for debugging long-running jobs.
         msg = str(e) or "Something went wrong. Please try again."
@@ -434,6 +432,7 @@ def run_section_pipeline(section_id: str) -> None:
                     "state": "complete",
                     "progress": 100,
                     "mp3": mp3_bytes,
+                    "completed_at": time.time(),
                 }
             else:
                 job_store[section_id] = {
@@ -441,11 +440,6 @@ def run_section_pipeline(section_id: str) -> None:
                     "state": "processing",
                     "progress": update["progress"],
                 }
-        import time
-
-        entries = completed_jobs.get(COMPLETED_JOBS_KEY, [])
-        entries.append((section_id, time.time()))
-        completed_jobs[COMPLETED_JOBS_KEY] = entries
     except BaseException as e:
         msg = str(e) or "Something went wrong. Please try again."
         job_store[section_id] = {
@@ -765,7 +759,7 @@ def web() -> "FastAPI":
                 raise HTTPException(404, "MP3 not available")
             # Simple byte-wise concatenation of section MP3s.
             combined = b"".join(segments)
-            updated = {**job, "mp3": combined}
+            updated = {**job, "mp3": combined, "completed_at": time.time()}
             job_store[job_id] = updated
 
             return Response(content=combined, media_type="audio/mpeg")
@@ -781,27 +775,43 @@ def web() -> "FastAPI":
     return api
 
 
-# Track completed jobs for cleanup
-COMPLETED_JOBS_KEY = "_completed"
-completed_jobs = modal.Dict.from_name("tts-completed-jobs", create_if_missing=True)
+COMPLETED_MP3_TTL_SECONDS = 30 * 60
+
+
+def cleanup_stale_job_mp3s(
+    store: Dict[str, dict],
+    cutoff: float,
+    *,
+    now: Optional[float] = None,
+) -> None:
+    """
+    Drop MP3 bytes from completed jobs older than cutoff (unix timestamp).
+    Jobs missing completed_at get stamped with now so legacy rows get a grace period.
+    """
+    stamp = time.time() if now is None else now
+    for job_id in list(store.keys()):
+        job = store.get(job_id)
+        if not job or job.get("state") != "complete" or not job.get("mp3"):
+            continue
+        completed_at = job.get("completed_at")
+        if completed_at is None:
+            store[job_id] = {**job, "completed_at": stamp}
+            continue
+        if completed_at >= cutoff:
+            continue
+        store[job_id] = {**job, "mp3": None}
 
 
 @app.function(image=web_image, schedule=modal.Cron("*/10 * * * *"))  # every 10 min
 def cleanup_old_jobs() -> None:
     """Delete completed MP3s older than 30 minutes."""
-    import time
-
-    cutoff = time.time() - (30 * 60)
-    entries = completed_jobs.get(COMPLETED_JOBS_KEY, [])
-    kept = []
-    for jid, ts in entries:
-        if ts >= cutoff:
-            kept.append((jid, ts))
-        else:
-            job = job_store.get(jid)
-            if job:
-                job_store[jid] = {**job, "mp3": None}
-    completed_jobs[COMPLETED_JOBS_KEY] = kept
+    logger = logging.getLogger(__name__)
+    try:
+        cutoff = time.time() - COMPLETED_MP3_TTL_SECONDS
+        cleanup_stale_job_mp3s(job_store, cutoff)
+    except Exception:
+        logger.exception("cleanup_old_jobs failed")
+        raise
 
 
 with image.imports():

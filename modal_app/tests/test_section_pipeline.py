@@ -48,13 +48,6 @@ def test_run_section_pipeline_happy_path(monkeypatch):
             generate_and_stitch_with_progress=fake_method,
         ),
     )
-    # completed_jobs bookkeeping is used but not critical for state
-    monkeypatch.setattr(
-        backend,
-        "completed_jobs",
-        {"_completed": []},
-    )
-
     # run_section_pipeline is a Modal function; invoke via .local for tests
     backend.run_section_pipeline.local(section_id)
 
@@ -62,6 +55,7 @@ def test_run_section_pipeline_happy_path(monkeypatch):
     assert job["state"] == "complete"
     assert job["progress"] == 100
     assert job["mp3"] == b"fake-mp3"
+    assert isinstance(job.get("completed_at"), float)
 
 
 def test_run_section_pipeline_passes_condition_params(monkeypatch):
@@ -121,12 +115,6 @@ def test_run_section_pipeline_passes_condition_params(monkeypatch):
         lambda: types.SimpleNamespace(
             generate_and_stitch_with_progress=fake_method,
         ),
-    )
-
-    monkeypatch.setattr(
-        backend,
-        "completed_jobs",
-        {"_completed": []},
     )
 
     backend.run_section_pipeline.local(section_id)

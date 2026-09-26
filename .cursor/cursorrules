@@ -32,6 +32,7 @@ There is NO separate backend service. Modal hosts everything: the API (via `@mod
 ## Critical Rules
 
 ### Modal (Backend API + GPU Worker)
+- **Job state:** Persist TTS job data in the single Modal Dict `job_store` (`tts-jobs`). Do not add a second Dict for the same lifecycle (e.g. a separate “completed jobs” index)—store fields like `completed_at` on each job instead.
 - Serve the FastAPI app using `@modal.asgi_app()` on Modal.
 - Use CPU functions for lightweight work: file parsing, chunking, progress tracking, serving files.
 - Use GPU functions for heavy work: **Chatterbox Multilingual** generation and audio stitching (pydub + ffmpeg).
@@ -56,6 +57,7 @@ There is NO separate backend service. Modal hosts everything: the API (via `@mod
 
 ### Testing
 - After any change to `modal_app/main.py`, write a pytest test for it in `modal_app/tests/` and confirm it passes before marking the task done.
+- CI (`.github/workflows/backend-tests.yml`) runs `pytest modal_app/tests/` on push/PR to `main`.
 - Backend tests are more valuable than frontend tests — all the real processing happens there.
 - Focus on: route responses (`/convert`, `/job/{id}/status`), `chunk_text()` edge cases (blank lines, `\r\n`, empty input, long text), and the full job lifecycle (submit → poll → complete).
 
@@ -78,6 +80,7 @@ There is NO separate backend service. Modal hosts everything: the API (via `@mod
 ### Modal Deploy
 - Always run `modal deploy` from the **project root**, not from inside `modal_app/` — the `voices/` directory is resolved relative to where you run the command
 - After every deploy, sanity-check: hit `/health`, submit a short text job, poll until complete
+- After deploy, smoke-test scheduled cleanup (same Dict auth path as cron): `modal run modal_app/main.py::cleanup_old_jobs`
 
 ### Up-to-date library docs (Context7)
 - When implementing or debugging **third-party library APIs** (Modal Python SDK, FastAPI, React, Vite, etc.), use the **Context7** MCP if it is enabled: call `resolve-library-id` then `query-docs`, or ask the user to include **“use context7”** in the prompt.
