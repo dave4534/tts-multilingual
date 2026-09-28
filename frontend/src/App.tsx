@@ -11,6 +11,8 @@ import { BottomBar } from "@/components/BottomBar";
 import { Button } from "@/components/ui/button";
 import { useVoices } from "@/hooks/useVoices";
 import { useConvert } from "@/hooks/useConvert";
+import { useStageProgress } from "@/hooks/useStageProgress";
+import { isPreGenerationPhase } from "@/lib/stage-progress";
 import { useTheme } from "@/hooks/useTheme";
 import { ThemeToggleIcon } from "@/components/ThemeToggleIcon";
 import {
@@ -92,6 +94,25 @@ function App() {
 
   const isConverting =
     convertState.status === "submitting" || convertState.status === "polling";
+
+  const stageProgress = useStageProgress(isConverting);
+
+  const backendProgress =
+    convertState.status === "polling" ? convertState.progress : 0;
+  const backendState =
+    convertState.status === "polling" ? convertState.state : "queued";
+
+  const settingStage =
+    convertState.status === "submitting" ||
+    (convertState.status === "polling" &&
+      isPreGenerationPhase(backendState, backendProgress));
+
+  const convertDisplayProgress =
+    convertState.status === "complete"
+      ? 100
+      : settingStage
+        ? stageProgress
+        : backendProgress;
 
   const handleFileSelect = useCallback((file: File, extractedText: string) => {
     setPendingFile(file);
@@ -417,12 +438,8 @@ function App() {
         status={bottomBarStatus}
         canConvert={!!canConvert}
         onConvert={handleConvert}
-        progress={
-          convertState.status === "polling" ? convertState.progress : 0
-        }
-        progressState={
-          convertState.status === "polling" ? convertState.state : "queued"
-        }
+        progress={convertDisplayProgress}
+        settingStage={settingStage}
         downloadUrl={
           convertState.status === "complete" ? convertState.downloadUrl : undefined
         }

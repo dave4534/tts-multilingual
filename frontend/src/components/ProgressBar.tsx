@@ -8,7 +8,7 @@ interface ProgressBarProps {
 
 const stateLabels: Record<string, string> = {
   queued: "Queued...",
-  warming_up: "Warming up...",
+  warming_up: "Setting the stage...",
   processing: "Converting...",
 };
 

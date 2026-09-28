@@ -12,27 +12,20 @@ interface BottomBarProps {
   canConvert: boolean;
   onConvert: () => void;
   progress?: number;
-  progressState?: string;
+  /** True while showing synthetic "Setting the stage" progress (pre-generation). */
+  settingStage?: boolean;
   downloadUrl?: string;
   wordCount?: number;
 }
 
 const MAX_WORDS = 20_000;
 
-function isWarmingUp(progressState: string, progress: number): boolean {
-  return (
-    progressState === "queued" ||
-    progressState === "warming_up" ||
-    (progressState === "processing" && progress === 0)
-  );
-}
-
 export function BottomBar({
   status,
   canConvert,
   onConvert,
   progress = 0,
-  progressState = "queued",
+  settingStage = false,
   downloadUrl,
   wordCount = 0,
 }: BottomBarProps) {
@@ -57,9 +50,10 @@ export function BottomBar({
     }
   }, [downloadUrl]);
 
-  const convertingLabel = isWarmingUp(progressState, progress)
-    ? "Warming up"
-    : `Generating ${progress}%`;
+  const pct = Math.round(progress);
+  const convertingLabel = settingStage
+    ? `Setting the stage ${pct}%`
+    : `Generating ${pct}%`;
 
   return (
     <footer
@@ -119,7 +113,7 @@ export function BottomBar({
             <div
               className="absolute inset-y-0 left-0 bg-primary/20 transition-[width] duration-300 ease-out"
               style={{
-                width: isWarmingUp(progressState, progress) ? "0%" : `${progress}%`,
+                width: `${Math.min(100, Math.max(0, progress))}%`,
               }}
             />
             <span className="relative z-10">{convertingLabel}</span>

@@ -48,7 +48,7 @@ There is NO separate backend service. Modal hosts everything: the API (via `@mod
 - Single page app, no routing needed.
 - Voice cards: horizontal row on desktop, vertical stack on mobile.
 - Poll backend every 2 seconds for progress during conversion.
-- Show "Warming up..." during Modal cold start before progress percentage kicks in.
+- Show "Setting the stage…" (synthetic progress) during Modal cold start before real chunk progress kicks in.
 
 
 ### Error Handling
