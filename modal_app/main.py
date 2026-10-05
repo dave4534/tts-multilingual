@@ -1009,8 +1009,34 @@ stt_image = (
     modal.Image.from_registry("nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04", add_python="3.11")
     .entrypoint([])
     .apt_install("ffmpeg")
-    .pip_install("faster-whisper==1.2.1", "numpy")
+    .pip_install(
+        "faster-whisper==1.2.1",
+        "numpy",
+        # CTranslate2 dlopens cuBLAS/cuDNN by soname; the pip wheels provide them.
+        "nvidia-cublas-cu12",
+        "nvidia-cudnn-cu12==9.*",
+    )
 )
+
+
+def _preload_cuda_libs() -> None:
+    """Load pip-installed cuBLAS/cuDNN into the process so CTranslate2 can find them."""
+    import ctypes
+    import glob
+    import os
+
+    import nvidia.cublas.lib
+    import nvidia.cudnn.lib
+
+    cublas_dir = nvidia.cublas.lib.__path__[0]
+    ctypes.CDLL(os.path.join(cublas_dir, "libcublas.so.12"), mode=ctypes.RTLD_GLOBAL)
+    cudnn_dir = nvidia.cudnn.lib.__path__[0]
+    for lib in sorted(glob.glob(os.path.join(cudnn_dir, "libcudnn*.so*"))):
+        try:
+            ctypes.CDLL(lib, mode=ctypes.RTLD_GLOBAL)
+        except OSError:
+            # Sub-libraries are also loaded on demand; the core ones above are what matter.
+            pass
 
 # Cache downloaded Whisper weights so cold starts don't re-download ~1.5 GB.
 stt_model_cache = modal.Volume.from_name("stt-model-cache", create_if_missing=True)
@@ -1031,6 +1057,7 @@ class WhisperTranscriber:
     def load_models(self) -> None:
         from faster_whisper import WhisperModel
 
+        _preload_cuda_libs()
         self._models: Dict[str, "WhisperModel"] = {}
         self._models["he"] = WhisperModel(
             STT_MODEL_BY_LANGUAGE["he"], device="cuda", compute_type="float16"
