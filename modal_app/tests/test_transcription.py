@@ -9,6 +9,7 @@ from modal_app.main import (
     normalize_transcription_language,
     segments_to_srt,
     segments_to_text,
+    transcript_content_disposition,
     validate_transcription_upload,
 )
 
@@ -70,6 +71,18 @@ def test_normalize_language_defaults_to_hebrew() -> None:
 def test_normalize_language_rejects_unknown_code() -> None:
     with pytest.raises(ValueError):
         normalize_transcription_language("fr")
+
+
+def test_content_disposition_is_latin1_safe_for_hebrew_names() -> None:
+    header = transcript_content_disposition("אורנה בשיחה.mp3", "srt")
+    header.encode("latin-1")  # must not raise
+    assert "filename=\"transcript.srt\"" in header
+    assert "filename*=UTF-8''" in header
+
+
+def test_content_disposition_keeps_ascii_name() -> None:
+    header = transcript_content_disposition("talk.mp3", "txt")
+    assert header == "attachment; filename=\"talk.txt\"; filename*=UTF-8''talk.txt"
 
 
 def test_decode_rejects_non_audio_bytes() -> None:

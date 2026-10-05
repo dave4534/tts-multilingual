@@ -365,6 +365,17 @@ def segments_to_srt(segments: List[dict]) -> str:
     return "\n".join(blocks)
 
 
+def transcript_content_disposition(source_name: str, ext: str) -> str:
+    """Build a download header. HTTP headers are latin-1, so non-ASCII names
+    (e.g. Hebrew file names) go in the UTF-8 `filename*` parameter only."""
+    from urllib.parse import quote
+
+    stem = Path(source_name).stem or "transcript"
+    utf8_name = f"{stem}.{ext}"
+    ascii_name = utf8_name if utf8_name.isascii() else f"transcript.{ext}"
+    return f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{quote(utf8_name)}"
+
+
 def segments_to_text(segments: List[dict]) -> str:
     lines = [str(seg.get("text", "")).strip() for seg in segments]
     return "\n".join(line for line in lines if line)
@@ -913,7 +924,6 @@ def web() -> "FastAPI":
                 content=json.dumps(payload, ensure_ascii=False),
                 media_type="application/json; charset=utf-8",
             )
-        stem = Path(job.get("filename") or "transcript").stem or "transcript"
         if fmt == "txt":
             body, media_type, ext = segments_to_text(segments), "text/plain; charset=utf-8", "txt"
         elif fmt == "srt":
@@ -923,7 +933,11 @@ def web() -> "FastAPI":
         return Response(
             content=body.encode("utf-8"),
             media_type=media_type,
-            headers={"Content-Disposition": f'attachment; filename="{stem}.{ext}"'},
+            headers={
+                "Content-Disposition": transcript_content_disposition(
+                    job.get("filename") or "", ext
+                )
+            },
         )
 
     return api
