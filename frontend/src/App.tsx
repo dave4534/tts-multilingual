@@ -15,6 +15,8 @@ import { useStageProgress } from "@/hooks/useStageProgress";
 import { isPreGenerationPhase } from "@/lib/stage-progress";
 import { useTheme } from "@/hooks/useTheme";
 import { ThemeToggleIcon } from "@/components/ThemeToggleIcon";
+import { ModeTabs, type AppMode } from "@/components/ModeTabs";
+import { SpeechToTextPanel } from "@/components/SpeechToTextPanel";
 import {
   MAIN_PADDING_BOTTOM_IDLE_PX,
   MAIN_PADDING_BOTTOM_WITH_TEXT_PX,
@@ -38,6 +40,7 @@ function App() {
   const [text, setText] = useState("");
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [apiError, setApiError] = useState<string | null>(null);
+  const [mode, setMode] = useState<AppMode>("tts");
 
   const { voices, loading: voicesLoading, error: voicesError, refetch: refetchVoices } = useVoices();
   const { state: convertState, startConvert, reset } = useConvert();
@@ -244,6 +247,9 @@ function App() {
               data-area="left-pane"
               className="debug-bg-left-pane relative z-0 flex min-h-0 flex-1 flex-col min-w-0"
             >
+          <ModeTabs mode={mode} onChange={setMode} disabled={isConverting} />
+          {mode === "stt" && <SpeechToTextPanel />}
+          {mode === "tts" && (
           <main
             className="flex min-h-[40vh] flex-1 flex-col overflow-hidden sm:min-h-0"
             style={{
@@ -378,10 +384,12 @@ function App() {
               </div>
             </section>
           </main>
+          )}
           </div>
           </div>
         </div>
 
+        {mode === "tts" && (
         <aside className="hidden min-h-0 sm:flex w-full shrink-0 flex-col border-t border-border bg-neutral-50 dark:bg-sidebar sm:w-80 sm:border-l sm:border-t-0 lg:w-96">
           <div className="shrink-0 bg-neutral-50 dark:bg-sidebar py-3" style={{ paddingLeft: 'var(--app-spacer-px)', paddingRight: 'var(--app-spacer-px)' }}>
             <h2 className="m-0 font-sans text-sm font-semibold text-foreground">
@@ -402,8 +410,11 @@ function App() {
             />
           </div>
         </aside>
+        )}
       </div>
 
+      {mode === "tts" && (
+      <>
       {showFileUpload ? (
         <>
           {/* footer spacer: 25px gap between content and bottom bar */}
@@ -445,6 +456,8 @@ function App() {
         }
         wordCount={countWords(text)}
       />
+      </>
+      )}
 
       <VoiceSheet
         open={voiceSheetOpen}

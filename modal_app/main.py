@@ -310,6 +310,103 @@ def extract_text_from_bytes(content: bytes, filename: str) -> str:
     raise ValueError("Please upload a .txt, .md, or .pdf file")
 
 
+# ---------------------------------------------------------------------------
+# Speech-to-text (Speech → Text tab)
+# ---------------------------------------------------------------------------
+
+STT_MAX_AUDIO_MB = 100
+STT_ALLOWED_EXTENSIONS = frozenset({"mp3", "wav", "m4a"})
+STT_LANGUAGE_IDS = frozenset({"he", "en"})
+STT_DEFAULT_LANGUAGE_ID = "he"
+# ivrit.ai fine-tune of Whisper large-v3-turbo (Hebrew) and stock turbo (English).
+STT_MODEL_BY_LANGUAGE = {
+    "he": "ivrit-ai/whisper-large-v3-turbo-ct2",
+    "en": "large-v3-turbo",
+}
+
+
+def validate_transcription_upload(filename: str, size_bytes: int) -> None:
+    """Raise ValueError if the upload is not an accepted audio file."""
+    ext = Path(filename or "").suffix.lower().lstrip(".")
+    if ext not in STT_ALLOWED_EXTENSIONS:
+        raise ValueError("Please upload an .mp3, .wav, or .m4a file.")
+    if size_bytes > STT_MAX_AUDIO_MB * 1024 * 1024:
+        raise ValueError(f"File exceeds {STT_MAX_AUDIO_MB} MB limit.")
+
+
+def normalize_transcription_language(language_id: Optional[str]) -> str:
+    lid = (language_id or STT_DEFAULT_LANGUAGE_ID).strip().lower()
+    if lid not in STT_LANGUAGE_IDS:
+        raise ValueError("Language must be 'he' (Hebrew) or 'en' (English).")
+    return lid
+
+
+def format_srt_time(seconds: float) -> str:
+    total_ms = int(round(seconds * 1000))
+    hours, total_ms = divmod(total_ms, 3_600_000)
+    minutes, total_ms = divmod(total_ms, 60_000)
+    secs, ms = divmod(total_ms, 1000)
+    return f"{hours:02d}:{minutes:02d}:{secs:02d},{ms:03d}"
+
+
+def segments_to_srt(segments: List[dict]) -> str:
+    blocks = []
+    index = 0
+    for seg in segments:
+        text = str(seg.get("text", "")).strip()
+        if not text:
+            continue
+        index += 1
+        blocks.append(
+            f"{index}\n"
+            f"{format_srt_time(float(seg['start']))} --> {format_srt_time(float(seg['end']))}\n"
+            f"{text}\n"
+        )
+    return "\n".join(blocks)
+
+
+def segments_to_text(segments: List[dict]) -> str:
+    lines = [str(seg.get("text", "")).strip() for seg in segments]
+    return "\n".join(line for line in lines if line)
+
+
+def decode_audio_to_float32(audio_bytes: bytes) -> "np.ndarray":
+    """Decode any ffmpeg-readable audio to 16 kHz mono float32 samples."""
+    import subprocess
+
+    import numpy as np
+
+    try:
+        proc = subprocess.run(
+            [
+                "ffmpeg", "-v", "error", "-i", "pipe:0",
+                "-f", "f32le", "-ac", "1", "-ar", "16000", "pipe:1",
+            ],
+            input=audio_bytes,
+            capture_output=True,
+            check=True,
+        )
+    except subprocess.CalledProcessError as e:
+        raise ValueError("We couldn't read this audio file. Try exporting it as MP3 or WAV.") from e
+    samples = np.frombuffer(proc.stdout, dtype=np.float32)
+    if samples.size == 0:
+        raise ValueError("This audio file appears to be empty.")
+    return samples
+
+
+def cleanup_stale_transcripts(store: Dict[str, dict], cutoff: float) -> None:
+    """Remove finished transcription jobs (and their text) older than cutoff."""
+    for job_id in list(store.keys()):
+        job = store.get(job_id)
+        if not job or job.get("kind") != "transcribe":
+            continue
+        if job.get("state") not in ("complete", "failed"):
+            continue
+        completed_at = job.get("completed_at")
+        if completed_at is not None and completed_at < cutoff:
+            del store[job_id]
+
+
 def _resolve_voice_path(voice_id: str) -> str:
     if voice_id == "lucy":
         return DEFAULT_VOICE_PATH
@@ -772,6 +869,63 @@ def web() -> "FastAPI":
             raise HTTPException(404, "MP3 not available")
         return Response(content=mp3, media_type="audio/mpeg")
 
+    @api.post("/transcribe")
+    async def transcribe_upload(
+        file: UploadFile = File(...),
+        language_id: str = Form(STT_DEFAULT_LANGUAGE_ID),
+    ) -> dict[str, str]:
+        """Queue an audio file for speech-to-text. Poll /job/{job_id}/status, then fetch the result."""
+        content = await file.read()
+        try:
+            validate_transcription_upload(file.filename or "", len(content))
+            lid = normalize_transcription_language(language_id)
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from e
+        job_id = str(uuid.uuid4())
+        job_store[job_id] = {
+            "kind": "transcribe",
+            "state": "queued",
+            "progress": 0,
+            "language_id": lid,
+            "filename": file.filename or "audio",
+        }
+        run_transcription_job.spawn(job_id, content)
+        return {"job_id": job_id}
+
+    @api.get("/transcribe/{job_id}/result")
+    def transcribe_result(job_id: str, format: str = "json"):
+        from fastapi.responses import Response
+
+        job = job_store.get(job_id)
+        if not job or job.get("kind") != "transcribe":
+            raise HTTPException(404, "Transcription not found")
+        if job.get("state") != "complete":
+            raise HTTPException(400, "Transcription not complete")
+        segments = job.get("segments") or []
+        fmt = format.lower()
+        if fmt == "json":
+            payload = {
+                "text": segments_to_text(segments),
+                "segments": segments,
+                "language_id": job.get("language_id"),
+            }
+            return Response(
+                content=json.dumps(payload, ensure_ascii=False),
+                media_type="application/json; charset=utf-8",
+            )
+        stem = Path(job.get("filename") or "transcript").stem or "transcript"
+        if fmt == "txt":
+            body, media_type, ext = segments_to_text(segments), "text/plain; charset=utf-8", "txt"
+        elif fmt == "srt":
+            body, media_type, ext = segments_to_srt(segments), "application/x-subrip; charset=utf-8", "srt"
+        else:
+            raise HTTPException(400, "format must be json, txt, or srt")
+        return Response(
+            content=body.encode("utf-8"),
+            media_type=media_type,
+            headers={"Content-Disposition": f'attachment; filename="{stem}.{ext}"'},
+        )
+
     return api
 
 
@@ -809,9 +963,112 @@ def cleanup_old_jobs() -> None:
     try:
         cutoff = time.time() - COMPLETED_MP3_TTL_SECONDS
         cleanup_stale_job_mp3s(job_store, cutoff)
+        cleanup_stale_transcripts(job_store, cutoff)
     except Exception:
         logger.exception("cleanup_old_jobs failed")
         raise
+
+
+@app.function(image=web_image, timeout=3600)
+def run_transcription_job(job_id: str, audio_bytes: bytes) -> None:
+    """Send audio to the GPU transcriber and keep job_store up to date."""
+    job = job_store.get(job_id)
+    if not job:
+        return
+    current = {**job, "state": "processing", "progress": 0}
+    job_store[job_id] = current
+    try:
+        segments: List[dict] = []
+        transcriber = WhisperTranscriber()
+        for update in transcriber.transcribe.remote_gen(audio_bytes, job["language_id"]):
+            if "segments" in update:
+                segments = update["segments"]
+            else:
+                current = {**current, "progress": update["progress"]}
+                job_store[job_id] = current
+        job_store[job_id] = {
+            **current,
+            "state": "complete",
+            "progress": 100,
+            "segments": segments,
+            "completed_at": time.time(),
+        }
+    except BaseException as e:
+        msg = str(e) or "Transcription failed. Please try again."
+        job_store[job_id] = {
+            **current,
+            "state": "failed",
+            "error": msg,
+            "completed_at": time.time(),
+        }
+
+
+stt_image = (
+    modal.Image.debian_slim(python_version="3.11")
+    .apt_install("ffmpeg")
+    .pip_install("faster-whisper==1.2.1", "numpy")
+)
+
+# Cache downloaded Whisper weights so cold starts don't re-download ~1.5 GB.
+stt_model_cache = modal.Volume.from_name("stt-model-cache", create_if_missing=True)
+
+
+@app.cls(
+    image=stt_image,
+    gpu="T4",
+    volumes={"/cache/huggingface": stt_model_cache},
+    env={"HF_HOME": "/cache/huggingface"},
+    timeout=3600,
+    scaledown_window=300,
+)
+class WhisperTranscriber:
+    """GPU speech-to-text. Hebrew uses the ivrit.ai fine-tune; English uses stock turbo."""
+
+    @modal.enter()
+    def load_models(self) -> None:
+        from faster_whisper import WhisperModel
+
+        self._models: Dict[str, "WhisperModel"] = {}
+        self._models["he"] = WhisperModel(
+            STT_MODEL_BY_LANGUAGE["he"], device="cuda", compute_type="float16"
+        )
+
+    def _model_for(self, language_id: str):
+        from faster_whisper import WhisperModel
+
+        if language_id not in self._models:
+            self._models[language_id] = WhisperModel(
+                STT_MODEL_BY_LANGUAGE[language_id], device="cuda", compute_type="float16"
+            )
+        return self._models[language_id]
+
+    @modal.method()
+    def transcribe(self, audio_bytes: bytes, language_id: str):
+        """Yield {"progress": int} updates, then {"segments": [...]} once done."""
+        lid = normalize_transcription_language(language_id)
+        audio = decode_audio_to_float32(audio_bytes)
+        duration = max(len(audio) / 16000.0, 1e-6)
+        model = self._model_for(lid)
+        segments_iter, _info = model.transcribe(
+            audio,
+            language=lid,
+            beam_size=5,
+            vad_filter=True,
+            condition_on_previous_text=False,
+        )
+        segments: List[dict] = []
+        last_progress = -1
+        for seg in segments_iter:
+            segments.append({
+                "start": round(seg.start, 2),
+                "end": round(seg.end, 2),
+                "text": seg.text.strip(),
+            })
+            progress = min(99, int(seg.end / duration * 100))
+            if progress != last_progress:
+                last_progress = progress
+                yield {"progress": progress}
+        yield {"segments": segments}
 
 
 with image.imports():
