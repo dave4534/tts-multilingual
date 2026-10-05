@@ -1003,8 +1003,11 @@ def run_transcription_job(job_id: str, audio_bytes: bytes) -> None:
         }
 
 
+# NVIDIA CUDA runtime image: faster-whisper on GPU needs cuBLAS/cuDNN, which
+# plain Debian images don't ship (fails with "libcublas.so.12 not found").
 stt_image = (
-    modal.Image.debian_slim(python_version="3.11")
+    modal.Image.from_registry("nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04", add_python="3.11")
+    .entrypoint([])
     .apt_install("ffmpeg")
     .pip_install("faster-whisper==1.2.1", "numpy")
 )
