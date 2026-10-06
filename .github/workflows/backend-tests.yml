@@ -15,8 +15,11 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
       - name: Install test dependencies
-        run: pip install pytest modal
+        run: pip install pytest modal numpy
 
       - name: Run modal_app tests
         run: PYTHONPATH=. pytest modal_app/tests/ -q
