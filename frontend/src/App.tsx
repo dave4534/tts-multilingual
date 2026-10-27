@@ -209,7 +209,7 @@ function App() {
             Kol Me (Maybe)
           </button>
           <p className="text-sm text-muted-foreground">
-            Transform your text into natural audio
+            Turn lengthy pieces of text to audiobooks
           </p>
         </div>
         <button
